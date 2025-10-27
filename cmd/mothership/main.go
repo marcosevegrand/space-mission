@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	// Command-line flags
+	// Command-line flag to specify server listen port
 	tsPort := flag.String("ts-port", ":8001", "TelemetryStream TCP port")
 	flag.Parse()
 
@@ -20,10 +20,10 @@ func main() {
 	log.Println("  MOTHERSHIP - Mission Control System")
 	log.Println("═══════════════════════════════════════")
 
-	// Initialize TelemetryStream server
-	tsServer := telemetrystream.NewTelemetryServer(*tsPort, 100)
+	// Create a TelemetryServer
+	tsServer := telemetrystream.NewTelemetryServer(*tsPort)
 
-	// Register telemetry handler
+	// Register telemetry handler to process incoming telemetry
 	tsServer.RegisterHandler(func(data *models.TelemetryData) {
 		log.Printf("📡 Telemetry from %s | Pos(%.2f,%.2f,%.2f) | State: %s | Battery: %.1f%% | Temp: %.1f°C",
 			data.RoverID,
@@ -33,21 +33,20 @@ func main() {
 			data.Temperature)
 	})
 
-	// Start TelemetryStream server
+	// Start the server
 	if err := tsServer.Start(); err != nil {
 		log.Fatalf("Failed to start TelemetryStream server: %v", err)
 	}
 
 	log.Printf("✓ TelemetryStream server listening on %s\n", *tsPort)
 
-	// Wait for shutdown signal
+	// Wait for termination signals to gracefully shut down
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigChan
 	log.Println("\n🛑 Shutting down mothership...")
 
-	// Graceful shutdown
 	if err := tsServer.Stop(); err != nil {
 		log.Printf("Error stopping TelemetryStream server: %v", err)
 	}

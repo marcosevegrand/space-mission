@@ -14,7 +14,7 @@ import (
 	"space-mission/pkg/telemetrystream"
 )
 
-// RoverSimulator simulates rover behavior and telemetry generation
+// RoverSimulator simulates the rover's telemetry data generation
 type RoverSimulator struct {
 	roverID          string
 	position         models.Position
@@ -43,13 +43,11 @@ func NewRoverSimulator(roverID string, startX, startY, startZ float64) *RoverSim
 }
 
 func (r *RoverSimulator) Update() {
-	// Simulate movement
 	if r.operationalState == models.StateMoving || r.operationalState == models.StateOnMission {
 		rad := r.velocity.Direction * math.Pi / 180.0
 		r.position.X += r.velocity.Speed * math.Cos(rad) * 0.1
 		r.position.Y += r.velocity.Speed * math.Sin(rad) * 0.1
 
-		// Drain battery
 		r.batteryLevel -= 0.05
 		if r.batteryLevel < 0 {
 			r.batteryLevel = 0
@@ -57,10 +55,8 @@ func (r *RoverSimulator) Update() {
 			r.velocity.Speed = 0
 		}
 
-		// Temperature variation
 		r.temperature = 20.0 + rand.Float64()*10.0
 	} else {
-		// Recharge when idle
 		if r.batteryLevel < 100.0 {
 			r.batteryLevel += 0.1
 			if r.batteryLevel > 100.0 {
@@ -70,7 +66,6 @@ func (r *RoverSimulator) Update() {
 		r.temperature = 20.0 + rand.Float64()*5.0
 	}
 
-	// Random state changes for simulation
 	if rand.Float64() < 0.01 {
 		r.changeState()
 	}
@@ -147,37 +142,32 @@ func main() {
 	log.Printf("  ROVER: %s", *roverID)
 	log.Printf("═══════════════════════════════════════")
 
-	// Initialize rover simulator
+	// Setup simulator
 	simulator := NewRoverSimulator(*roverID, *startX, *startY, *startZ)
 
-	// Create TelemetryStream client
-	tsClient := telemetrystream.NewTelemetryClient(telemetrystream.TelemetryClientConfig{
-		ServerAddress:  *mothershipAddr,
-		RoverID:        *roverID,
-		SendInterval:   *sendInterval,
-		ReconnectDelay: 5 * time.Second,
-		AutoReconnect:  true,
-	})
+	// Create Telemetry client
+	tsClient := telemetrystream.NewTelemetryClient(*mothershipAddr, *roverID, *sendInterval)
 
-	// Set telemetry source
-	tsClient.SetTelemetrySource(simulator.GenerateTelemetry)
-
-	// Start streaming telemetry
+	// Connect to mothership
 	log.Printf("🚀 Connecting to mothership at %s...", *mothershipAddr)
-	if err := tsClient.StartStreaming(); err != nil {
+	if err := tsClient.Connect(); err != nil {
+		log.Fatalf("Failed to connect to mothership: %v", err)
+	}
+
+	// Start telemetry streaming with the simulator's data source
+	if err := tsClient.StartStreaming(simulator.GenerateTelemetry); err != nil {
 		log.Fatalf("Failed to start telemetry streaming: %v", err)
 	}
 
 	log.Printf("✓ Telemetry streaming started (interval: %v)\n", *sendInterval)
 
-	// Wait for shutdown signal
+	// Wait for termination
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	<-sigChan
+
 	log.Println("\n🛑 Shutting down rover...")
 
-	// Stop telemetry client
 	if err := tsClient.Stop(); err != nil {
 		log.Printf("Error stopping telemetry client: %v", err)
 	}
