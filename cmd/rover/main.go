@@ -33,12 +33,12 @@ func NewRoverSimulator(roverID string, startX, startY, startZ float64) *RoverSim
 			Z: startZ,
 		},
 		velocity: models.Velocity{
-			Speed:     0.0,
-			Direction: 0.0,
+			Speed:     1.0,
+			Direction: 37.0,
 		},
-		batteryLevel:     100.0,
+		batteryLevel:     60.0,
 		temperature:      20.0,
-		operationalState: models.StateIdle,
+		operationalState: models.StateMoving,
 	}
 }
 
