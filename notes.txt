@@ -1,0 +1,5 @@
+o progresso que o rover envia à mothership pelo mission link basta ser algo q diz "50%" foi concluido ou tem de devolver informação/dados relativos à missão em questão
+
+é preciso usar mutex lock no telemetry stream
+
+devo implementar o tcp server de forma modular sem referencias ao telemetry stream ou podem estar juntos

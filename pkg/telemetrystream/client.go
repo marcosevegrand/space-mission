@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"space-mission/pkg/models"
@@ -18,25 +17,23 @@ import (
 // concurrent manner.
 type TelemetryClient struct {
 	serverAddress string        // TCP address (IP:port) of the TelemetryServer (mothership)
-	roverID       string        // Unique identifier for the rover using this client
 	conn          *net.TCPConn  // Established TCP connection to the server
 	connected     bool          // Indicates if the client is currently connected to the server
+	streaming     bool          // Indicates if the client is currently streaming to the server
 	encoder       *json.Encoder // Encoder for serializing telemetry data to JSON over the connection
 	sendInterval  time.Duration // How often telemetry data should be sent (e.g. every 2 seconds)
-	mu            sync.Mutex    // Mutex for thread-safe access to internal fields and connection
 	stopChan      chan struct{} // Channel to signal background goroutine to stop sending and disconnect
 }
 
-// NewTelemetryClient creates a new TelemetryClient instance with the specified server address,
-// rover ID, and telemetry send interval. The stop channel is initialized internally.
-func NewTelemetryClient(serverAddress, roverID string, sendInterval time.Duration) *TelemetryClient {
+// NewTelemetryClient creates a new TelemetryClient instance with the specified server
+// address and telemetry send interval. The stop channel is initialized internally.
+func NewTelemetryClient(serverAddress string, sendInterval time.Duration) *TelemetryClient {
 	if sendInterval == 0 {
 		sendInterval = time.Second // default to 1 second interval
 	}
 
 	return &TelemetryClient{
 		serverAddress: serverAddress,
-		roverID:       roverID,
 		sendInterval:  sendInterval,
 		stopChan:      make(chan struct{}),
 	}
@@ -44,8 +41,6 @@ func NewTelemetryClient(serverAddress, roverID string, sendInterval time.Duratio
 
 // Connect establishes a TCP connection to the telemetry server and prepares the JSON encoder.
 func (c *TelemetryClient) Connect() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if c.connected {
 		return nil // Already connected
@@ -67,17 +62,9 @@ func (c *TelemetryClient) Connect() error {
 // Send transmits a single telemetry data packet to the server. The RoverID and Timestamp fields
 // are set automatically before sending.
 func (c *TelemetryClient) Send(telemetry *models.TelemetryData) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if !c.connected {
 		return fmt.Errorf("client is not connected")
-	}
-
-	// Set identifying and timing fields
-	telemetry.RoverID = c.roverID
-	if telemetry.Timestamp.IsZero() {
-		telemetry.Timestamp = time.Now()
 	}
 
 	// Set write deadline to avoid blocking indefinitely
@@ -101,7 +88,12 @@ func (c *TelemetryClient) StartStreaming(dataSource func() *models.TelemetryData
 		}
 	}
 
+	if c.streaming {
+		return fmt.Errorf("client is already streaming")
+	}
+
 	go c.streamLoop(dataSource)
+	c.streaming = true
 
 	log.Printf("Started telemetry streaming every %s", c.sendInterval)
 	return nil
@@ -132,17 +124,12 @@ func (c *TelemetryClient) streamLoop(dataSource func() *models.TelemetryData) {
 
 // IsConnected returns whether the TelemetryClient currently has an active connection.
 func (c *TelemetryClient) IsConnected() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.connected
 }
 
 // Stop stops the background telemetry streaming and closes the TCP connection gracefully.
 func (c *TelemetryClient) Stop() error {
 	close(c.stopChan)
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {

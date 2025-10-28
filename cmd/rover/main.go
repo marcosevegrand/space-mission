@@ -146,7 +146,7 @@ func main() {
 	simulator := NewRoverSimulator(*roverID, *startX, *startY, *startZ)
 
 	// Create Telemetry client
-	tsClient := telemetrystream.NewTelemetryClient(*mothershipAddr, *roverID, *sendInterval)
+	tsClient := telemetrystream.NewTelemetryClient(*mothershipAddr, *sendInterval)
 
 	// Connect to mothership
 	log.Printf("🚀 Connecting to mothership at %s...", *mothershipAddr)
@@ -166,7 +166,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("\n🛑 Shutting down rover...")
+	log.Println("🛑 Shutting down rover...")
 
 	if err := tsClient.Stop(); err != nil {
 		log.Printf("Error stopping telemetry client: %v", err)

@@ -18,13 +18,11 @@ import (
 // For each client, it receives JSON telemetry (models.TelemetryData), stores the latest
 // telemetry per rover, and invokes a registered TelemetryHandler callback.
 type TelemetryServer struct {
-	address         string                           // TCP address (IP:port) to listen for client connections
-	listener        *net.TCPListener                 // Listener for accepting incoming TCP connections
-	handler         TelemetryHandler                 // Callback to process each telemetry packet received
-	latestTelemetry map[string]*models.TelemetryData // Latest telemetry per rover (by RoverID)
-	mu              sync.Mutex                       // Mutex for concurrency-safety of internal fields
-	wg              sync.WaitGroup                   // Tracks ongoing connection goroutines for graceful cleanup
-	stopChan        chan struct{}                    // Signal channel for shutdown
+	address  string           // TCP address (IP:port) to listen for client connections
+	listener *net.TCPListener // Listener for accepting incoming TCP connections
+	handler  TelemetryHandler // Callback to process each telemetry packet received
+	wg       sync.WaitGroup   // Tracks ongoing connection goroutines for graceful cleanup
+	stopChan chan struct{}    // Signal channel for shutdown
 }
 
 // TelemetryHandler is a callback function type for processing telemetry data received from clients.
@@ -35,9 +33,8 @@ type TelemetryHandler func(*models.TelemetryData)
 // The address parameter should be in the format "host:port" (e.g., ":9000" or "localhost:9000").
 func NewTelemetryServer(address string) *TelemetryServer {
 	return &TelemetryServer{
-		address:         address,
-		latestTelemetry: make(map[string]*models.TelemetryData),
-		stopChan:        make(chan struct{}),
+		address:  address,
+		stopChan: make(chan struct{}),
 	}
 }
 
@@ -126,23 +123,12 @@ func (s *TelemetryServer) handleConnection(conn net.Conn) {
 				telemetry.Timestamp = time.Now()
 			}
 
-			// Store the latest telemetry (thread-safe)
-			s.storeTelemetry(&telemetry)
-
 			// Call handler if one is registered
 			if s.handler != nil {
 				s.handler(&telemetry)
 			}
 		}
 	}
-}
-
-// storeTelemetry safely stores the latest telemetry data for a rover.
-// Protected by mutex to ensure concurrent safe access.
-func (s *TelemetryServer) storeTelemetry(data *models.TelemetryData) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.latestTelemetry[data.RoverID] = data
 }
 
 // Stop gracefully shuts down the server, closing all connections and cleaning up resources.

@@ -45,7 +45,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigChan
-	log.Println("\n🛑 Shutting down mothership...")
+	log.Println("🛑 Shutting down mothership...")
 
 	if err := tsServer.Stop(); err != nil {
 		log.Printf("Error stopping TelemetryStream server: %v", err)
