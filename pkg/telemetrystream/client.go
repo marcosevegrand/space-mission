@@ -31,7 +31,6 @@ func NewTelemetryClient(serverAddress string, sendInterval time.Duration) *Telem
 	if sendInterval == 0 {
 		sendInterval = time.Second // default to 1 second interval
 	}
-
 	return &TelemetryClient{
 		serverAddress: serverAddress,
 		sendInterval:  sendInterval,
