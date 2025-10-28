@@ -6,7 +6,7 @@ type Mission struct {
 	ID             string
 	GeographicArea GeographicArea
 	Task           Task
-	Duration       time.Duration
+	MaxDuration    time.Duration
 	UpdateInterval time.Duration
 	Status         MissionStatus
 	Progress       float64
@@ -22,6 +22,11 @@ const (
 	// other tasks can be added here
 )
 
+type GeographicArea struct {
+	Type        string // "rectangle", "circle"
+	Coordinates interface{}
+}
+
 type Circle struct {
 	Center [2]float64
 	Radius float64
@@ -32,16 +37,11 @@ type Rectangle struct {
 	BottomRight [2]float64
 }
 
-type GeographicArea struct {
-	Type        string // "rectangle", "circle"
-	Coordinates interface{}
-}
-
 type MissionStatus string
 
 const (
 	MissionPending    MissionStatus = "pending"
-	MissionAssigned   MissionStatus = "assigned"
 	MissionInProgress MissionStatus = "in_progress"
+	MissionPaused     MissionStatus = "paused"
 	MissionCompleted  MissionStatus = "completed"
 )
