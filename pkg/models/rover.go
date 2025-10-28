@@ -1,20 +1,41 @@
 package models
 
-// type RoverInfo struct {
-//     ID               string        // Rover ID (e.g., "R-002")
-//     Status           RoverStatus   // Overall status (online, offline, error)
-//     LastSeen         time.Time     // Last communication
-//     CurrentMission   *Mission      // Active mission
-//     ConnectionInfo   ConnectionInfo // Network connection details
-//     // ... plus capabilities, performance metrics
-// }
+import "time"
 
-// Key Features:
+// RoverInfo stores metadata and operational state of a rover in the fleet
+type Rover struct {
+	RoverID          string           // Rover unique identifier (e.g., "R-002")
+	Status           RoverStatus      // Online / Offline / Error
+	ConnectionInfo   ConnectionInfo   // Network connection details
+	BatteryLevel     float64          // Current battery percentage (0–100)
+	Temperature      float64          // Internal system temperature (°C)
+	Position         Position         // Current 3D position
+	Velocity         Velocity         // Current speed and direction
+	OperationalState OperationalState // Current operational mode (Idle, Moving, etc.)
+	Performance      RoverPerformance // Performance metrics (speed, CPU load, etc.)
+}
 
-//     ✅ Rover status tracking and capabilities
+// RoverStatus represents the overall connectivity/operational status of the rover
+type RoverStatus string
 
-//     ✅ Connection quality monitoring
+const (
+	StatusError   RoverStatus = "Error"
+	StatusOnline  RoverStatus = "Online"
+	StatusOffline RoverStatus = "Offline"
+)
 
-//     ✅ Fleet management support
+// ConnectionInfo stores basic network connection data
+type ConnectionInfo struct {
+	IPAddress string // Last known IP address
+	Port      int    // Communication port
+	LatencyMS int64  // Last measured latency in milliseconds
+	SignalDB  int    // Signal strength (in dB)
+}
 
-//     ✅ Performance statistics
+// RoverPerformance tracks rover-specific metrics
+type RoverPerformance struct {
+	CPUUsage    float64       // Percent CPU utilization
+	MemoryUsage float64       // Percent memory utilization
+	WheelLoad   float64       // Load factor on drive motors
+	Uptime      time.Duration // Time since last reboot
+}

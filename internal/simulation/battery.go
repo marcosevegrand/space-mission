@@ -1,26 +1,13 @@
-// package simulation
-
-// // Functions:
-// - ConsumeBattery(current float64, rate float64, dt time.Duration) float64
-// - GetConsumptionRate(state OperationalState, velocity float64) float64
-// - CheckLowBattery(level float64) bool
-// - SimulateBatteryDrain(rover *Rover)
-
-// // Implements:
-// - Battery consumption based on activity (idle < moving < mission)
-// - Higher consumption when moving faster
-// - Low battery alerts (<20%)
-// - Critical battery shutdown (<5%)
-
 package simulation
 
 import (
 	"log"
+	"math/rand"
 	"space-mission/pkg/models"
 	"time"
 )
 
-// ConsumeBattery retorna o novo nível de bateria após dt com taxa "rate" (%/s)
+// ConsumeBattery returns the new battery level after time dt with the given drain rate (%/s)
 func ConsumeBattery(current float64, rate float64, dt time.Duration) float64 {
 	drained := rate * dt.Seconds()
 	newLevel := current - drained
@@ -30,18 +17,28 @@ func ConsumeBattery(current float64, rate float64, dt time.Duration) float64 {
 	return newLevel
 }
 
-// GetConsumptionRate devolve taxa de consumo em função do estado e velocidade (em %/s)
+// ChargeBattery increases battery level using a given solar rate (%/s)
+func ChargeBattery(current float64, rate float64, dt time.Duration) float64 {
+	charged := rate * dt.Seconds()
+	newLevel := current + charged
+	if newLevel > 100 {
+		newLevel = 100
+	}
+	return newLevel
+}
+
+// GetConsumptionRate returns the battery consumption rate (%/s) based on operational state and velocity
 func GetConsumptionRate(state models.OperationalState, velocity float64) float64 {
 	switch state {
 	case models.StateIdle:
-		return 0.002 // 0.2% por 100s
+		return 0.002 // 0.2% per 100s
 	case models.StateMoving:
-		base := 0.005               // 0.5% por 100s
-		vfactor := velocity * 0.001 // mais velocidade: +0.1%/s por cada 1 m/s
+		base := 0.005               // 0.5% per 100s
+		vfactor := velocity * 0.001 // extra consumption per m/s
 		return base + vfactor
 	case models.StateOnMission:
-		base := 0.015               // 1.5% por 100s (missão gasta mais)
-		vfactor := velocity * 0.002 // mais penalizador
+		base := 0.015               // 1.5% per 100s (missions consume more)
+		vfactor := velocity * 0.002 // higher penalty with speed
 		return base + vfactor
 	case models.StateError:
 		return 0.0005
@@ -50,13 +47,38 @@ func GetConsumptionRate(state models.OperationalState, velocity float64) float64
 	}
 }
 
-// CheckLowBattery devolve true se bateria baixa (<20%)
+// GetSolarChargeRate returns the solar charge rate (%/s)
+// The rate may depend on time of day, rover state, and random variation.
+func GetSolarChargeRate(state models.OperationalState, sunlightFactor float64) float64 {
+	// sunlightFactor ∈ [0, 1], where 0 = no sun, 1 = full sunlight
+	if sunlightFactor <= 0.05 {
+		return 0 // no charging at night or low light
+	}
+
+	// Base charging rate (0.01%/s = 1% every 100s)
+	base := 0.01 * sunlightFactor
+
+	// Only charge effectively when idle or low activity
+	switch state {
+	case models.StateIdle:
+		return base * 1.2 // 20% bonus when idle
+	case models.StateMoving:
+		return base * 0.5 // less efficient when moving
+	case models.StateOnMission:
+		return base * 0.3 // least efficient while performing tasks
+	default:
+		return base
+	}
+}
+
+// CheckLowBattery returns true if the battery is low (<20%)
 func CheckLowBattery(level float64) bool {
 	return level < 20
 }
 
-// SimulateBatteryDrain altera a estrutura Rover, aplicando consumo, alertando e shutdown crítico
-func SimulateBatteryDrain(rover *models.rover, dt time.Duration) {
+// SimulateBatteryDrain updates the Rover's battery level based on its activity,
+// logs alerts for low battery, and triggers a critical shutdown (<5%)
+func SimulateBatteryDrain(rover *models.Rover, dt time.Duration) {
 	rate := GetConsumptionRate(rover.OperationalState, rover.Velocity.Speed)
 	rover.BatteryLevel = ConsumeBattery(rover.BatteryLevel, rate, dt)
 
@@ -66,5 +88,24 @@ func SimulateBatteryDrain(rover *models.rover, dt time.Duration) {
 		log.Printf("⚡ CRITICAL BATTERY SHUTDOWN on %s! Battery=%.2f%%", rover.RoverID, rover.BatteryLevel)
 	} else if rover.BatteryLevel < 20 {
 		log.Printf("⚠️ LOW BATTERY on %s: %.2f%%", rover.RoverID, rover.BatteryLevel)
+	}
+}
+
+// SimulateSolarCharging applies solar recharging if conditions allow
+func SimulateSolarCharging(rover *models.Rover, dt time.Duration) {
+	// Example: random sunlight intensity between 0.0–1.0
+	sunlight := rand.Float64()
+
+	rate := GetSolarChargeRate(rover.OperationalState, sunlight)
+	if rate > 0 {
+		prev := rover.BatteryLevel
+		rover.BatteryLevel = ChargeBattery(rover.BatteryLevel, rate, dt)
+		if rover.BatteryLevel > prev {
+			log.Printf("☀️ Solar charging on %s: +%.2f%% (Battery=%.2f%%, Sun=%.0f%%)",
+				rover.RoverID,
+				rover.BatteryLevel-prev,
+				rover.BatteryLevel,
+				sunlight*100)
+		}
 	}
 }

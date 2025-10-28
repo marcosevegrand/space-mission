@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"space-mission/internal/simulation"
 	"space-mission/pkg/models"
 	"space-mission/pkg/telemetrystream"
 )
@@ -42,27 +43,34 @@ func NewRoverSimulator(roverID string, startX, startY, startZ float64) *RoverSim
 	}
 }
 
-func (r *RoverSimulator) Update() {
+// Update updates the rover state and simulates battery drain and solar charging
+func (r *RoverSimulator) Update(dt time.Duration) {
 	if r.operationalState == models.StateMoving || r.operationalState == models.StateOnMission {
 		rad := r.velocity.Direction * math.Pi / 180.0
 		r.position.X += r.velocity.Speed * math.Cos(rad) * 0.1
 		r.position.Y += r.velocity.Speed * math.Sin(rad) * 0.1
+	}
 
-		r.batteryLevel -= 0.05
-		if r.batteryLevel < 0 {
-			r.batteryLevel = 0
-			r.operationalState = models.StateError
-			r.velocity.Speed = 0
-		}
+	// Cria rover temporário para aplicar simulação de bateria
+	tempRover := &models.Rover{
+		RoverID:          r.roverID,
+		BatteryLevel:     r.batteryLevel,
+		OperationalState: r.operationalState,
+		Velocity:         r.velocity,
+	}
 
+	simulation.SimulateBatteryDrain(tempRover, dt)
+	simulation.SimulateSolarCharging(tempRover, dt)
+
+	// Atualiza simulação no simulador original
+	r.batteryLevel = tempRover.BatteryLevel
+	r.operationalState = tempRover.OperationalState
+	r.velocity.Speed = tempRover.Velocity.Speed
+
+	// Atualiza temperatura com base no estado atual
+	if r.operationalState == models.StateMoving || r.operationalState == models.StateOnMission {
 		r.temperature = 20.0 + rand.Float64()*10.0
 	} else {
-		if r.batteryLevel < 100.0 {
-			r.batteryLevel += 0.1
-			if r.batteryLevel > 100.0 {
-				r.batteryLevel = 100.0
-			}
-		}
 		r.temperature = 20.0 + rand.Float64()*5.0
 	}
 
@@ -87,8 +95,8 @@ func (r *RoverSimulator) changeState() {
 	}
 }
 
-func (r *RoverSimulator) GenerateTelemetry() *models.TelemetryData {
-	r.Update()
+func (r *RoverSimulator) GenerateTelemetry(dt time.Duration) *models.TelemetryData {
+	r.Update(dt)
 
 	return &models.TelemetryData{
 		RoverID:          r.roverID,
@@ -129,7 +137,6 @@ func (r *RoverSimulator) getPowerSystemHealth() models.HealthStatus {
 }
 
 func main() {
-	// Command-line flags
 	roverID := flag.String("id", "ROVER-01", "Rover identifier")
 	mothershipAddr := flag.String("mothership", "localhost:8001", "Mothership TelemetryStream address")
 	sendInterval := flag.Duration("interval", 2*time.Second, "Telemetry send interval")
@@ -142,26 +149,24 @@ func main() {
 	log.Printf("  ROVER: %s", *roverID)
 	log.Printf("═══════════════════════════════════════")
 
-	// Setup simulator
 	simulator := NewRoverSimulator(*roverID, *startX, *startY, *startZ)
 
-	// Create Telemetry client
 	tsClient := telemetrystream.NewTelemetryClient(*mothershipAddr, *sendInterval)
 
-	// Connect to mothership
 	log.Printf("🚀 Connecting to mothership at %s...", *mothershipAddr)
 	if err := tsClient.Connect(); err != nil {
 		log.Fatalf("Failed to connect to mothership: %v", err)
 	}
 
-	// Start telemetry streaming with the simulator's data source
-	if err := tsClient.StartStreaming(simulator.GenerateTelemetry); err != nil {
+	// Start telemetry streaming - passing a closure that calls GenerateTelemetry with interval dt
+	if err := tsClient.StartStreaming(func() *models.TelemetryData {
+		return simulator.GenerateTelemetry(*sendInterval)
+	}); err != nil {
 		log.Fatalf("Failed to start telemetry streaming: %v", err)
 	}
 
 	log.Printf("✓ Telemetry streaming started (interval: %v)\n", *sendInterval)
 
-	// Wait for termination
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
