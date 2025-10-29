@@ -12,6 +12,11 @@ type Mission struct {
 	Progress       float64
 }
 
+type GeographicArea struct {
+	Type        string // "rectangle", "circle"
+	Coordinates any
+}
+
 type Task string
 
 const (
@@ -21,11 +26,6 @@ const (
 	TaskTerrainMapping          Task = "terrain_mapping"
 	// other tasks can be added here
 )
-
-type GeographicArea struct {
-	Type        string // "rectangle", "circle"
-	Coordinates any
-}
 
 type MissionStatus string
 
