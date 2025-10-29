@@ -1,36 +1,20 @@
-// package api
-
-// // Types:
-// type APIClient struct {
-//     baseURL    string
-//     httpClient *http.Client
-// }
-
-// // Functions:
-// - NewAPIClient(baseURL string) *APIClient
-// - GetRovers() (*APIRoversList, error)
-// - GetMissions() (*APIMissionsList, error)
-// - GetTelemetry() (*APITelemetryData, error)
-// - GetRoverDetail(id string) (*APIRoverDetail, error)
-// - GetSystemStatus() (*APISystemStatus, error)
-
-// // Used by: Ground Control application
-
 package api
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"space-mission/pkg/models"
 )
 
-// Example response types (replace with your actual types)
-type APIRoversList struct{}
-type APIMissionsList struct{}
-type APITelemetryData struct{}
-type APIRoverDetail struct{}
-type APISystemStatus struct{}
+type APIRoverSummary struct {
+	RoverID   uint16            `json:"rover_id"`
+	Telemetry *models.Telemetry `json:"telemetry,omitempty"`
+	Connected bool              `json:"connected"`
+}
 
 type APIClient struct {
 	baseURL    string
@@ -38,126 +22,101 @@ type APIClient struct {
 }
 
 func NewAPIClient(baseURL string) *APIClient {
+	// Normalize: remove trailing slash(es)
+	base := strings.TrimRight(baseURL, "/")
+
+	// If caller passed a base that already ends with "/api" (or "/api/"),
+	// strip that segment so client methods which append "/api/..." don't
+	// produce "/api/api/..." URLs.
+	if strings.HasSuffix(strings.ToLower(base), "/api") {
+		base = strings.TrimSuffix(base, "/api")
+	}
+
 	return &APIClient{
-		baseURL:    baseURL,
+		baseURL:    base,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-func (c *APIClient) GetRovers() (*APIRoversList, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/api/rovers")
+func (c *APIClient) GetRovers() ([]APIRoverSummary, error) {
+	url := c.baseURL + "/api/rovers"
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetRovers request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	var rovers APIRoversList
-	if err := json.NewDecoder(resp.Body).Decode(&rovers); err != nil {
-		return nil, err
+
+	var list []APIRoverSummary
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("GetRovers decode failed: %w", err)
 	}
-	return &rovers, nil
+	return list, nil
 }
 
-func (c *APIClient) GetMissions() (*APIMissionsList, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/api/missions")
+func (c *APIClient) GetTelemetry() ([]models.Telemetry, error) {
+	url := c.baseURL + "/api/telemetry"
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetTelemetry request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	var missions APIMissionsList
-	if err := json.NewDecoder(resp.Body).Decode(&missions); err != nil {
-		return nil, err
+
+	var list []models.Telemetry
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("GetTelemetry decode failed: %w", err)
 	}
-	return &missions, nil
+	return list, nil
 }
 
-// Implement other methods (GetTelemetry, GetRoverDetail, GetSystemStatus) similarly.
-func (c *APIClient) GetTelemetry() (*APITelemetryData, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/api/telemetry")
+func (c *APIClient) GetMissions() ([]models.Mission, error) {
+	url := c.baseURL + "/api/missions"
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetMissions request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	var telemetry APITelemetryData
-	if err := json.NewDecoder(resp.Body).Decode(&telemetry); err != nil {
-		return nil, err
+
+	var list []models.Mission
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("GetMissions decode failed: %w", err)
 	}
-	return &telemetry, nil
+	return list, nil
 }
 
-func (c *APIClient) GetRoverDetail(id string) (*APIRoverDetail, error) {
-	resp, err := c.httpClient.Get(c.baseURL + fmt.Sprintf("/api/rovers/%s", id))
+func (c *APIClient) GetRoverDetail(id string) (*models.Telemetry, error) {
+	url := c.baseURL + "/api/rovers/" + id
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetRoverDetail request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	var detail APIRoverDetail
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, err
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("rover %s not found", id)
 	}
-	return &detail, nil
+
+	var t models.Telemetry
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return nil, fmt.Errorf("GetRoverDetail decode failed: %w", err)
+	}
+	return &t, nil
 }
 
-func (c *APIClient) GetSystemStatus() (*APISystemStatus, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/api/status")
+func (c *APIClient) GetMissionDetail(id string) (*models.Mission, error) {
+	url := c.baseURL + "/api/missions/" + id
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetMissionDetail request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	var status APISystemStatus
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-		return nil, err
-	}
-	return &status, nil
-}
 
-func (c *APIClient) GetMissionDetail(id string) (*APIMissionDetail, error) {
-	resp, err := c.httpClient.Get(c.baseURL + fmt.Sprintf("/api/missions/%s", id))
-	if err != nil {
-		return nil, err
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("mission %s not found", id)
 	}
-	defer resp.Body.Close()
-	var detail APIMissionDetail
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, err
-	}
-	return &detail, nil
-}
 
-func (c *APIClient) GetMissionList() (*APIMissionsList, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/api/missions")
-	if err != nil {
-		return nil, err
+	var m models.Mission
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, fmt.Errorf("GetMissionDetail decode failed: %w", err)
 	}
-	defer resp.Body.Close()
-	var missions APIMissionsList
-	if err := json.NewDecoder(resp.Body).Decode(&missions); err != nil {
-		return nil, err
-	}
-	return &missions, nil
-}
-
-func (c *APIClient) GetMissionStatus(id string) (*APIMissionStatus, error) {
-	resp, err := c.httpClient.Get(c.baseURL + fmt.Sprintf("/api/missions/%s/status", id))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var status APIMissionStatus
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-		return nil, err
-	}
-	return &status, nil
-}
-
-func (c *APIClient) GetMissionLogs(id string) (*APIMissionLogs, error) {
-	resp, err := c.httpClient.Get(c.baseURL + fmt.Sprintf("/api/missions/%s/logs", id))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var logs APIMissionLogs
-	if err := json.NewDecoder(resp.Body).Decode(&logs); err != nil {
-		return nil, err
-	}
-	return &logs, nil
+	return &m, nil
 }

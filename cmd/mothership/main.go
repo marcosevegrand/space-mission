@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"space-mission/pkg/api"
 	"space-mission/pkg/codecs/missioncodec"
 	"space-mission/pkg/codecs/telemetrycodec"
 	"space-mission/pkg/models"
@@ -117,6 +119,9 @@ type Mothership struct {
 	missionServer *udplink.Server
 	missionCodec  *missioncodec.MissionCodec
 
+	// Observation API server
+	apiServer *api.APIServer
+
 	// State management
 	rovers   map[uint16]*RoverState
 	roversMu sync.RWMutex
@@ -154,6 +159,18 @@ func NewMothership(telemetryPort string, missionPort string) *Mothership {
 		ms.handleMissionPacket,
 	)
 
+	// Create API server
+	// ...existing code...
+	ms.apiServer = api.NewAPIServer(":8080")
+	// enable self-update snapshots every 5s so connected web clients get updates
+	ms.apiServer.SetSelfUpdateInterval(5 * time.Second)
+	// start API server (non-fatal)
+	if err := ms.apiServer.Start(); err != nil {
+		log.Printf("⚠️  Failed to start API server: %v", err)
+	} else {
+		log.Printf("✓ Observation API listening on %s", ":8080")
+	}
+
 	return ms
 }
 
@@ -186,6 +203,11 @@ func (ms *Mothership) Stop() {
 	log.Println("\n🛑 Shutting down Mothership...")
 	ms.telemetryServer.Stop()
 	ms.missionServer.Stop()
+
+	if ms.apiServer != nil {
+		_ = ms.apiServer.Shutdown(context.Background())
+	}
+
 	log.Println("✓ All systems stopped")
 }
 
@@ -211,6 +233,11 @@ func (ms *Mothership) handleTelemetry(telemetry models.Telemetry) error {
 	rover.LastUpdate = time.Now()
 	rover.Connected = true
 	ms.roversMu.Unlock()
+
+	// Update Observation API (if available)
+	if ms.apiServer != nil {
+		ms.apiServer.UpdateTelemetry(telemetry) // <-- push telemetry to API
+	}
 
 	// Log telemetry data
 	stateStr := getStateString(telemetry.OperationalState)
@@ -308,6 +335,11 @@ func (ms *Mothership) handleMissionRequest(msg missioncodec.MissionLinkMessage, 
 	if err != nil {
 		log.Printf("❌ Failed to send assignment: %v", err)
 		return
+	}
+
+	// Notify API about new mission
+	if ms.apiServer != nil {
+		ms.apiServer.UpdateMission(mission) // <-- push mission to API
 	}
 
 	ms.statsmu.Lock()
