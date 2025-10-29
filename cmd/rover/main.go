@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -249,7 +251,7 @@ type Rover struct {
 	missionCodec  *missioncodec.MissionCodec
 }
 
-func NewRover(roverID uint16, mothershipAddr string, telemetryPort string, missionPort string) (*Rover, error) {
+func NewRover(roverID uint16, tcpServerAddr string, udpServerAddr string) (*Rover, error) {
 	rover := &Rover{
 		simulator:      NewRoverSimulator(roverID),
 		telemetryCodec: telemetrycodec.NewTelemetryCodec(),
@@ -258,7 +260,7 @@ func NewRover(roverID uint16, mothershipAddr string, telemetryPort string, missi
 
 	// Create TCP telemetry client
 	rover.telemetryClient = tcpstream.NewClient(
-		mothershipAddr+telemetryPort,
+		tcpServerAddr,
 		5*time.Second,
 		3*time.Second,
 		2*time.Second, // Send telemetry every 2 seconds
@@ -268,7 +270,7 @@ func NewRover(roverID uint16, mothershipAddr string, telemetryPort string, missi
 	// Create UDP mission client
 	var err error
 	rover.missionClient, err = udplink.NewClient(
-		mothershipAddr+missionPort,
+		udpServerAddr,
 		5*time.Second, // Dial timeout
 		2*time.Second, // Retransmit timeout
 		3,             // Max retries
@@ -423,19 +425,84 @@ func (r *Rover) missionProgressLoop() {
 	}
 }
 
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("  rover <rover_id> <tcp_server_addr> <udp_server_addr>")
+	fmt.Println()
+	fmt.Println("Arguments:")
+	fmt.Println("  rover_id         - Rover identifier (1-65535)")
+	fmt.Println("  tcp_server_addr  - TCP server address for telemetry (e.g., localhost:8001)")
+	fmt.Println("  udp_server_addr  - UDP server address for missions (e.g., localhost:9090)")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  rover 1 localhost:8001 localhost:9090")
+	fmt.Println("  rover 2 10.0.0.1:8001 10.0.0.1:9090")
+	fmt.Println("  rover 5 192.168.1.100:8001 192.168.1.100:9090")
+	fmt.Println()
+	fmt.Println("Alternative using flags:")
+	fmt.Println("  rover -id 1 -tcp localhost:8001 -udp localhost:9090")
+}
+
 func main() {
-	// Parse command line arguments
-	roverID := uint16(1)
-	if len(os.Args) > 1 {
-		fmt.Sscanf(os.Args[1], "%d", &roverID)
+	// Define flags
+	roverIDFlag := flag.Uint("id", 0, "Rover ID (1-65535)")
+	tcpAddrFlag := flag.String("tcp", "", "TCP server address for telemetry (e.g., localhost:8001)")
+	udpAddrFlag := flag.String("udp", "", "UDP server address for missions (e.g., localhost:9090)")
+	helpFlag := flag.Bool("help", false, "Show help message")
+
+	flag.Parse()
+
+	// Show help if requested
+	if *helpFlag {
+		printUsage()
+		os.Exit(0)
+	}
+
+	var roverID uint16
+	var tcpServerAddr string
+	var udpServerAddr string
+
+	// Check if using positional arguments (old style)
+	args := flag.Args()
+	if len(args) == 3 {
+		// Positional arguments: rover_id tcp_addr udp_addr
+		id, err := strconv.ParseUint(args[0], 10, 16)
+		if err != nil {
+			log.Fatalf("❌ Invalid rover ID: %v", err)
+		}
+		roverID = uint16(id)
+		tcpServerAddr = args[1]
+		udpServerAddr = args[2]
+	} else if *roverIDFlag != 0 && *tcpAddrFlag != "" && *udpAddrFlag != "" {
+		// Flag-based arguments
+		if *roverIDFlag > 65535 {
+			log.Fatalf("❌ Rover ID must be between 1 and 65535")
+		}
+		roverID = uint16(*roverIDFlag)
+		tcpServerAddr = *tcpAddrFlag
+		udpServerAddr = *udpAddrFlag
+	} else {
+		// No valid arguments provided
+		fmt.Println("❌ Error: Missing required arguments")
+		fmt.Println()
+		printUsage()
+		os.Exit(1)
+	}
+
+	// Validate rover ID
+	if roverID == 0 {
+		log.Fatalf("❌ Rover ID must be greater than 0")
 	}
 
 	log.Printf("═══════════════════════════════════════")
 	log.Printf("   🤖 ROVER %d - Autonomous Explorer   ", roverID)
 	log.Printf("═══════════════════════════════════════")
+	log.Printf("TCP Server: %s", tcpServerAddr)
+	log.Printf("UDP Server: %s", udpServerAddr)
+	log.Printf("═══════════════════════════════════════")
 
 	// Create rover
-	rover, err := NewRover(roverID, "localhost", ":8001", ":9090")
+	rover, err := NewRover(roverID, tcpServerAddr, udpServerAddr)
 	if err != nil {
 		log.Fatalf("❌ Failed to create rover: %v", err)
 	}
