@@ -4,14 +4,15 @@ import "time"
 
 // RoverInfo stores metadata and operational state of a rover in the fleet
 type Rover struct {
-	RoverID          string           // Rover unique identifier (e.g., "R-002")
+	RoverID          uint16           // Rover unique identifier (e.g., "R-002")
 	Status           RoverStatus      // Online / Offline / Error
 	ConnectionInfo   ConnectionInfo   // Network connection details
-	BatteryLevel     float64          // Current battery percentage (0–100)
-	Temperature      float64          // Internal system temperature (°C)
+	BatteryLevel     float32          // Current battery percentage (0–100)
+	Temperature      float32          // Internal system temperature (°C)
 	Position         Position         // Current 3D position
 	Velocity         Velocity         // Current speed and direction
 	OperationalState OperationalState // Current operational mode (Idle, Moving, etc.)
+	SystemHealth     SystemHealth     // Health status of all major subsystems
 	Performance      RoverPerformance // Performance metrics (speed, CPU load, etc.)
 }
 
@@ -20,6 +21,7 @@ type RoverStatus string
 
 const (
 	StatusError   RoverStatus = "Error"
+	StatusUnknown RoverStatus = "Unknown"
 	StatusOnline  RoverStatus = "Online"
 	StatusOffline RoverStatus = "Offline"
 )

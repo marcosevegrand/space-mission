@@ -1,6 +1,6 @@
-// package storage
+package memory
 
-// // Types:
+// Types:
 // type MemoryStore struct {
 //     missions   map[string]*Mission
 //     telemetry  map[string]*TelemetryData
@@ -8,7 +8,7 @@
 //     mutex      sync.RWMutex
 // }
 
-// // Functions:
+// Functions:
 // - NewMemoryStore() *MemoryStore
 // - StoreMission(mission *Mission)
 // - GetMission(id string) (*Mission, bool)
@@ -16,7 +16,7 @@
 // - GetLatestTelemetry(roverID string) (*TelemetryData, bool)
 // - ListActiveMissions() []*Mission
 
-// // Implements:
+// Implements:
 // - Thread-safe in-memory storage
 // - CRUD operations for missions, rovers, telemetry
 // - No database dependency (all in RAM)

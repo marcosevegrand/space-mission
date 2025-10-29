@@ -24,17 +24,7 @@ const (
 
 type GeographicArea struct {
 	Type        string // "rectangle", "circle"
-	Coordinates interface{}
-}
-
-type Circle struct {
-	Center [2]float64
-	Radius float64
-}
-
-type Rectangle struct {
-	TopLeft     [2]float64
-	BottomRight [2]float64
+	Coordinates any
 }
 
 type MissionStatus string
