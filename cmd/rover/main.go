@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"space-mission/internal/simulation"
 	"space-mission/pkg/codecs/missioncodec"
 	"space-mission/pkg/codecs/telemetrycodec"
 	"space-mission/pkg/models"
@@ -56,7 +57,7 @@ func NewRoverSimulator(roverID uint16) *RoverSimulator {
 			Speed:     0,
 			Direction: 0,
 		},
-		batteryLevel:     100.0,
+		batteryLevel:     22.0,
 		temperature:      20.0 + float32(rand.Float64()*5),
 		operationalState: models.StateIdle,
 		systemHealth: models.SystemHealth{
@@ -74,15 +75,27 @@ func NewRoverSimulator(roverID uint16) *RoverSimulator {
 
 // UpdateSimulation updates rover state based on current mission
 func (rs *RoverSimulator) UpdateSimulation() {
-	// Update battery
-	drainMultiplier := float32(1.0)
-	if rs.operationalState == models.StateMoving {
+	// Use simulation helpers for battery consumption/charging.
+	// Keep existing drainMultiplier behavior, but derive rates from the simulation package.
+	// derive drain multiplier from operational state using a tagged switch
+	var drainMultiplier float32
+	switch rs.operationalState {
+	case models.StateMoving:
 		drainMultiplier = 2.0
-	} else if rs.operationalState == models.StateOnMission {
+	case models.StateOnMission:
 		drainMultiplier = 1.5
+	default:
+		drainMultiplier = 1.0
 	}
 
-	rs.batteryLevel -= rs.batteryDrainRate * drainMultiplier
+	// Base consumption rate from simulation package (returns %/s)
+	baseRate := simulation.GetConsumptionRate(rs.operationalState)
+
+	// We keep the existing scaling factor batteryDrainRate to preserve prior tuning.
+	consumptionRate := baseRate * rs.batteryDrainRate * drainMultiplier
+
+	// Apply consumption assuming a 1s step (keeps behavior stable relative to previous simple subtraction).
+	rs.batteryLevel = simulation.ConsumeBattery(rs.batteryLevel, consumptionRate, 1*time.Second)
 	if rs.batteryLevel < 0 {
 		rs.batteryLevel = 0
 		rs.operationalState = models.StateError
@@ -95,6 +108,18 @@ func (rs *RoverSimulator) UpdateSimulation() {
 		targetTemp += 10.0
 	}
 	rs.temperature += (targetTemp - rs.temperature) * 0.1
+
+	// Solar charging (random sunlight like previous code)
+	sunlight := rand.Float32()
+	chargeRate := simulation.GetSolarChargeRate(sunlight)
+	if chargeRate > 0 && rs.operationalState != models.StateError {
+		prev := rs.batteryLevel
+		rs.batteryLevel = simulation.ChargeBattery(rs.batteryLevel, chargeRate, 1*time.Second)
+		if rs.batteryLevel > prev {
+			log.Printf("☀️ Rover %d a carregar: +%.2f%% (Bateria=%.2f%%, Sol=%.0f%%)",
+				rs.roverID, rs.batteryLevel-prev, rs.batteryLevel, sunlight*100)
+		}
+	}
 
 	// Update position if on mission
 	if rs.currentMission != nil && rs.operationalState == models.StateOnMission {
