@@ -1,70 +1,55 @@
 package simulation
 
-// import (
-// 	"math"
-// 	"math/rand"
-// 	"time"
-// )
+import (
+	"math"
+	"math/rand"
+	"time"
+)
 
-// // EnvironmentalData representa as condições ambientais num instante
-// type EnvironmentalData struct {
-// 	Temperature float64 // °C
-// 	Humidity    float64 // 0-100%
-// 	WindSpeed   float64 // m/s
-// 	Pressure    float64 // hPa
-// 	TimeOfDay   float64 // [0.0, 1.0] (dia=1, noite=0)
-// }
+// EnvironmentalData holds environmental sensor readings in float32
+type EnvironmentalData struct {
+	Temperature float32 // degrees Celsius
+	Humidity    float32 // percentage (0-100)
+	WindSpeed   float32 // meters per second
+	Pressure    float32 // hectopascals
+	TimeOfDay   float32 // normalized day/night cycle: 0 = night, 1 = day
+}
 
-// // Simula ciclo dia/noite simplificado: [0...1] ao longo de 24h
-// fpackagunc dayNightCycle(now time.Time) float64 {
-// 	hour := now.Hour() + float64(now.Minute())/60
-// 	// picos de 1.0 às 14h, mínimos de 0.0 às 2h/4h
-// 	return 0.5 + 0.5*math.Sin((hour-7)*math.Pi/12)
-// }
+// DayNightCycle returns a normalized value describing day (1) and night (0) cycle based on current time
+func DayNightCycle(now time.Time) float32 {
+	hour := float32(now.Hour()) + float32(now.Minute())/60.0
+	return 0.5 + 0.5*float32(math.Sin(float64((hour-7)*math.Pi/12)))
+}
 
-// // Gera dados ambientais com ruído randômico e variação horária
-// func GenerateEnvironmentalData(now time.Time) EnvironmentalData {
-// 	tod := dayNightCycle(now)
+// GenerateEnvironmentalData creates a randomized environmental snapshot at a given time
+func GenerateEnvironmentalData(now time.Time) EnvironmentalData {
+	tod := DayNightCycle(now)
 
-// 	// Temperatura: variação base 15°C noite, até 30°C dia, com ruído ±2°C
-// 	tBase := 15 + 15*tod
-// 	temperature := tBase + rand.NormFloat64()*2
+	// Temperature varies from 15°C at night to 30°C at day with ±2°C noise
+	tBase := 15 + 15*tod
+	temperature := tBase + float32(rand.NormFloat64()*2)
 
-// 	// Humidade: inversamente proporcional à temperatura, ruído ±5%
-// 	humidity := 90 - 40*tod + rand.NormFloat64()*5
-// 	if humidity > 100 {
-// 		humidity = 100
-// 	}
-// 	if humidity < 0 {
-// 		humidity = 0
-// 	}
+	// Humidity inversely relates to temperature with ±5% noise, clamped 0-100%
+	humidity := 90 - 40*tod + float32(rand.NormFloat64()*5)
+	if humidity > 100 {
+		humidity = 100
+	} else if humidity < 0 {
+		humidity = 0
+	}
 
-// 	// Vento: base 2~8 m/s, com flutuações rápidas
-// 	wind := 2 + 6*rand.Float64() + rand.NormFloat64()
+	// Wind speed fluctuates between ~2 and 8 m/s with noise
+	wind := float32(2 + 6*rand.Float64() + rand.NormFloat64())
 
-// 	// Pressão atmosférica: 1000±10 hPa + variações lentas dia/noite
-// 	pressure := 1000 + 5*math.Sin(now.Sub(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())).Hours()/24*2*math.Pi) + rand.NormFloat64()*3
+	// Pressure has daily sinusoidal variation around 1000 hPa with noise
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	elapsedHours := float32(now.Sub(midnight).Hours())
+	pressure := 1000 + 5*float32(math.Sin(float64(elapsedHours)/24*2*math.Pi)) + float32(rand.NormFloat64()*3)
 
-// 	return EnvironmentalData{
-// 		Temperature: temperature,
-// 		Humidity:    humidity,
-// 		WindSpeed:   wind,
-// 		Pressure:    pressure,
-// 		TimeOfDay:   tod,
-// 	}
-// }
-
-// func SimulateTemperature(now time.Time) float64 {
-// 	data := GenerateEnvironmentalData(now)
-// 	return data.Temperature
-// }
-
-// func SimulateWindSpeed(now time.Time) float64 {
-// 	data := GenerateEnvironmentalData(now)
-// 	return data.WindSpeed
-// }
-
-// func SimulateAtmosphericPressure(now time.Time) float64 {
-// 	data := GenerateEnvironmentalData(now)
-// 	return data.Pressure
-// }
+	return EnvironmentalData{
+		Temperature: temperature,
+		Humidity:    humidity,
+		WindSpeed:   wind,
+		Pressure:    pressure,
+		TimeOfDay:   tod,
+	}
+}
