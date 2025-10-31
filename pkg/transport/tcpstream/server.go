@@ -13,14 +13,14 @@ import (
 
 // Server represents a TCP server that receives and deserializes packets
 type Server[T any] struct {
-	listener net.Listener
+	listener *net.TCPListener
 
 	// Configuration
 	address       string
 	listenTimeout time.Duration
 	readTimeout   time.Duration
-	deserializer  interfaces.Deserializer[T]
-	handler       interfaces.Handler[T]
+	decoder       interfaces.Decoder[T]
+	handler       interfaces.TCPHandler[T]
 
 	// Lifecycle management
 	wg       sync.WaitGroup
@@ -31,17 +31,17 @@ type Server[T any] struct {
 
 // NewServer creates a new TCP server for receiving and deserializing packets
 // Parameters:
-//   - address: server listen address (e.g., ":8080")
+//   - address: server listen address (e.g., ":8001")
 //   - listenTimeout: timeout for listening for incoming connections
 //   - readTimeout: timeout for reading packets
-//   - deserializer: function to deserialize incoming bytes
+//   - decoder: function to deserialize incoming bytes
 //   - handler: function to handle incoming data
 func NewServer[T any](
 	address string,
 	listenTimeout time.Duration,
 	readTimeout time.Duration,
-	deserializer interfaces.Deserializer[T],
-	handler interfaces.Handler[T],
+	decoder interfaces.Decoder[T],
+	handler interfaces.TCPHandler[T],
 ) *Server[T] {
 	if listenTimeout == 0 {
 		listenTimeout = 1 * time.Second
@@ -55,7 +55,7 @@ func NewServer[T any](
 		address:       address,
 		listenTimeout: listenTimeout,
 		readTimeout:   readTimeout,
-		deserializer:  deserializer,
+		decoder:       decoder,
 		handler:       handler,
 		stopChan:      make(chan struct{}),
 	}
@@ -78,7 +78,7 @@ func (s *Server[T]) UpdateReadTimeout(timeout time.Duration) {
 }
 
 // UpdateHandler updates the data handler callback
-func (s *Server[T]) UpdateHandler(handler interfaces.Handler[T]) {
+func (s *Server[T]) UpdateHandler(handler interfaces.TCPHandler[T]) {
 	s.mu.Lock()
 	s.handler = handler
 	s.mu.Unlock()
@@ -93,7 +93,13 @@ func (s *Server[T]) Start() error {
 		return fmt.Errorf("server already running")
 	}
 
-	listener, err := net.Listen("tcp", s.address)
+	addr, err := net.ResolveTCPAddr("tcp", s.address)
+	if err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("failed to resolve address: %w", err)
+	}
+
+	listener, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("failed to start listener: %w", err)
@@ -122,12 +128,13 @@ func (s *Server[T]) acceptLoop() {
 		default:
 		}
 
-		// Set deadline to allow periodic checking of stopChan
-		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
-			tcpListener.SetDeadline(time.Now().Add(s.listenTimeout))
-		}
+		// Set listen deadline
+		s.mu.Lock()
+		listenTimeout := s.listenTimeout
+		s.mu.Unlock()
+		s.listener.SetDeadline(time.Now().Add(listenTimeout))
 
-		conn, err := s.listener.Accept()
+		conn, err := s.listener.AcceptTCP()
 		if err != nil {
 			select {
 			case <-s.stopChan:
@@ -135,6 +142,7 @@ func (s *Server[T]) acceptLoop() {
 			default:
 			}
 
+			// Expected error
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
@@ -151,7 +159,7 @@ func (s *Server[T]) acceptLoop() {
 }
 
 // handleConnection manages a single client connection
-func (s *Server[T]) handleConnection(conn net.Conn) {
+func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 	defer s.wg.Done()
 	defer func() {
 		conn.Close()
@@ -166,24 +174,31 @@ func (s *Server[T]) handleConnection(conn net.Conn) {
 		}
 
 		// Set read deadline
-		conn.SetReadDeadline(time.Now().Add(s.readTimeout))
+		s.mu.Lock()
+		readTimeout := s.readTimeout
+		s.mu.Unlock()
+		conn.SetReadDeadline(time.Now().Add(readTimeout))
 
 		// Read the length prefix (4 bytes)
 		lengthBuf := make([]byte, 4)
 		_, err := io.ReadFull(conn, lengthBuf)
 		if err != nil {
+
 			if err == io.EOF {
 				log.Printf("[TCP Server] Client disconnected: %s", conn.RemoteAddr())
 				return
 			}
+
+			// Expected error
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
+
 			log.Printf("[TCP Server] Error reading packet length prefix: %v", err)
 			return
 		}
 
-		// Parse packet length
+		// Parse packet length ?????
 		packetLength := uint32(lengthBuf[0])<<24 | uint32(lengthBuf[1])<<16 |
 			uint32(lengthBuf[2])<<8 | uint32(lengthBuf[3])
 
@@ -208,7 +223,7 @@ func (s *Server[T]) handleConnection(conn net.Conn) {
 		}
 
 		// Deserialize the packet
-		data, err := s.deserializer(packet)
+		data, err := s.decoder(packet)
 		if err != nil {
 			log.Printf("[TCP Server] Deserialization error: %v", err)
 			return

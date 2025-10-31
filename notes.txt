@@ -3,3 +3,39 @@ o progresso que o rover envia à mothership pelo mission link basta ser algo q d
 é preciso usar mutex lock no telemetry stream
 
 devo implementar o tcp server de forma modular sem referencias ao telemetry stream ou podem estar juntos
+
+
+===========
+
+
+1. Relativamente aos Codecs, eu tenho nas minhas structs campos como MissionStatus (mission.go) e OperationalState (rover/telemetry, common.go) que são enums
+
+> Exemplo:
+        // OperationalState represents the current operational mode of a rover.
+        type OperationalState uint8
+
+        // Operational states that a rover can be in.
+        const (
+       	StateIdle      OperationalState = iota + 1 // Rover is stationary and idle
+       	StateMoving                                // Rover is in motion
+       	StateOnMission                             // Rover is executing a mission
+       	StateError                                 // Rover encountered an error
+       	StateUnknown                               // Rover state is unknown
+        )
+
+        func (os OperationalState) String() string {
+       	return [...]string{"idle", "moving", "onMission", "Error", "Unknown"}[os-1]
+        }
+
+Desta forma os codecs acabam por nunca ter de serializar strings o que diminui o tamanho do payload, mas tenho receio
+que ao não demostrar que consigo escrever um serializer que serializa dados de tamanho variável podemos perder pontos
+ESTÁ TRANQUILO, ESTÁ FAVORÁVEL
+
+2. Ao implementar o UDP link, o Go fornece duas formas de trabalhar com os sockets, listen e dial que permitem criar uma relação servidor-cliente. No meu caso, a minha implementação do servidor e cliente só se distingue pelo facto de um usar listen (e portanto WriteToUDP/ReadFromUDP) e o outro dial (e portanto Write/Read). Eu acho que seria mais simples usar Listen para ambos e ter o mesmo código para o servidor e cliente que no caso acho que seriam peers.
+PROVAVELMENTE PREFERIVEL USAR SÓ LISTEN
+
+3. Para o TCP stream seria mais adequado implementa-lo de forma a futuramente poder ser usado para comunicação bidirecional ou basta que tenha a capacidade dos clientes fazerem streaming de telemetry para o servidor.
+NAO É NECESSÁRIO SE JUSTIFICADO
+
+4. Os clientes TCP devem ter a capacidade de auto-reconnect ao servidor caso a ligação por algum motivo seja perdida?
+FAZER

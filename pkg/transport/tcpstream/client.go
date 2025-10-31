@@ -1,5 +1,5 @@
 // Package tcp provides a simplified TCP client for sending serialized data
-// The client serializes data using a provided serializer and sends it over TCP
+// The client serializes data using a provided encoder and sends it over TCP
 package tcpstream
 
 import (
@@ -14,14 +14,14 @@ import (
 
 // Client represents a TCP client that serializes and sends data
 type Client[T any] struct {
-	conn net.Conn
+	conn *net.TCPConn
 
 	// Configuration
 	serverAddress string
 	dialTimeout   time.Duration
 	writeTimeout  time.Duration
 	callInterval  time.Duration
-	serializer    interfaces.Serializer[T]
+	encoder       interfaces.Encoder[T]
 
 	// Lifecycle management
 	wg        sync.WaitGroup
@@ -36,13 +36,13 @@ type Client[T any] struct {
 //   - dialTimeout: timeout for dialing the server
 //   - writeTimeout: timeout for write operations
 //   - callInterval: interval for calling data source
-//   - serializer: function to serialize data before sending
+//   - encoder: function to serialize data before sending
 func NewClient[T any](
 	serverAddress string,
 	dialTimeout time.Duration,
 	writeTimeout time.Duration,
 	callInterval time.Duration,
-	serializer interfaces.Serializer[T],
+	encoder interfaces.Encoder[T],
 ) *Client[T] {
 	if dialTimeout == 0 {
 		dialTimeout = 10 * time.Second
@@ -58,7 +58,7 @@ func NewClient[T any](
 
 	return &Client[T]{
 		serverAddress: serverAddress,
-		serializer:    serializer,
+		encoder:       encoder,
 		dialTimeout:   dialTimeout,
 		writeTimeout:  writeTimeout,
 		callInterval:  callInterval,
@@ -104,7 +104,13 @@ func (c *Client[T]) Connect() error {
 		return fmt.Errorf("failed to connect to %s: %w", c.serverAddress, err)
 	}
 
-	c.conn = conn
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		conn.Close()
+		return fmt.Errorf("connection is not a TCP connection")
+	}
+
+	c.conn = tcpConn
 	c.connected = true
 	log.Printf("[TCP Client] Connected to %s", c.serverAddress)
 
@@ -122,7 +128,7 @@ func (c *Client[T]) Send(data T) error {
 	c.mu.Unlock()
 
 	// Serialize data
-	packet, err := c.serializer(data)
+	packet, err := c.encoder(data)
 	if err != nil {
 		return fmt.Errorf("serialization failed: %w", err)
 	}

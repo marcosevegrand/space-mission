@@ -1,4 +1,4 @@
-// package api
+package observationapi
 
 // import "github.com/gorilla/websocket"
 

@@ -114,7 +114,7 @@ type Mothership struct {
 	telemetryCodec  *telemetrycodec.TelemetryCodec
 
 	// UDP Mission Server
-	missionServer *udplink.Server
+	missionServer *udplink.Server[models.Mission]
 	missionCodec  *missioncodec.MissionCodec
 
 	// State management

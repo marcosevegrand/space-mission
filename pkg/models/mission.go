@@ -1,9 +1,11 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type Mission struct {
-	ID             string
+	ID             uint32
 	GeographicArea GeographicArea
 	Task           Task
 	MaxDuration    time.Duration
@@ -35,3 +37,41 @@ const (
 	MissionPaused     MissionStatus = "paused"
 	MissionCompleted  MissionStatus = "completed"
 )
+
+// MissionRequest represents a rover requesting a mission
+type MissionRequest struct {
+	RoverID   uint16
+	Timestamp time.Time
+}
+
+// MissionAssignment represents a mission assigned to a rover
+type MissionAssignment struct {
+	RoverID        uint16
+	MissionID      string
+	GeographicArea GeographicArea
+	Task           Task
+	MaxDuration    time.Duration
+	UpdateInterval time.Duration
+	Timestamp      time.Time
+}
+
+// ProgressUpdate represents mission progress from a rover
+type ProgressUpdate struct {
+	RoverID         uint16
+	MissionID       string
+	Status          MissionStatus
+	Progress        float64
+	CurrentPosition Position
+	Timestamp       time.Time
+}
+
+// MissionMessage interface to unify all message types
+type MissionMessage interface {
+	isMissionMessage()
+}
+
+// Implement the interface for each struct
+
+func (m MissionAssignment) isMissionMessage() {}
+func (m ProgressUpdate) isMissionMessage()    {}
+func (m MissionRequest) isMissionMessage()    {}

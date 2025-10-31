@@ -1,4 +1,4 @@
-// package api
+package observationapi
 
 // // Types:
 // type APIServer struct {

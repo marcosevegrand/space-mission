@@ -3,13 +3,18 @@ package interfaces
 
 // Serializer is a function type that converts a typed data structure into bytes
 // Used by clients to serialize data before sending
-type Serializer[T any] func(T) ([]byte, error)
+type Encoder[T any] func(T) ([]byte, error)
 
 // Deserializer is a function type that converts raw bytes into a typed data structure
 // Used by servers to deserialize incoming packets
-type Deserializer[T any] func([]byte) (T, error)
+type Decoder[T any] func([]byte) (T, error)
 
 // Handler is a callback function that processes deserialized data
 // Used by servers to handle received data after deserialization
 // Returns error if the packet should cause connection closure
-type Handler[T any] func(data T) error
+type TCPHandler[T any] func(data T) error
+
+// Handler is a callback function that processes deserialized data
+// Used by servers to handle received data after deserialization
+// Returns error if the packet should cause connection closure
+type UDPHandler[T any] func(data T, addr string) error
