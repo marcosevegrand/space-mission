@@ -1,4 +1,4 @@
-package api
+package observationapi
 
 import (
 	"encoding/json"
@@ -14,6 +14,11 @@ type APIRoverSummary struct {
 	RoverID   uint16            `json:"rover_id"`
 	Telemetry *models.Telemetry `json:"telemetry,omitempty"`
 	Connected bool              `json:"connected"`
+}
+
+type APIClient struct {
+    baseURL    string
+    httpClient *http.Client
 }
 
 // func (c *APIClient) GetSystemStatus() (*APISystemStatus, error) {

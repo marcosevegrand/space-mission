@@ -18,6 +18,7 @@ type EnvironmentalData struct {
 // DayNightCycle returns a normalized value describing day (1) and night (0) cycle based on current time
 func DayNightCycle(now time.Time) float32 {
 	hour := float32(now.Hour()) + float32(now.Minute())/60.0
+	// Sinusoidal variation shifted to simulate daylight peak around 13h
 	return 0.5 + 0.5*float32(math.Sin(float64((hour-7)*math.Pi/12)))
 }
 
@@ -52,4 +53,22 @@ func GenerateEnvironmentalData(now time.Time) EnvironmentalData {
 		Pressure:    pressure,
 		TimeOfDay:   tod,
 	}
+}
+
+// IsSunlightAvailable returns intensity of sunlight [0..1] based on day/night and environmental attenuation
+func IsSunlightAvailable(now time.Time, env EnvironmentalData) float32 {
+	sunlight := env.TimeOfDay
+
+	// Attenuation due to humidity and wind (simulating dust/cloud cover)
+	attenuation := 1.0 - (env.Humidity/100)*0.5 - (env.WindSpeed/20)*0.3
+	if attenuation < 0 {
+		attenuation = 0
+	}
+
+	sunlightIntensity := sunlight * float32(attenuation)
+
+	if sunlightIntensity < 0.1 { // Threshold to consider no sunlight
+		return 0
+	}
+	return sunlightIntensity
 }
