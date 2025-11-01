@@ -1,12 +1,12 @@
-package missioncodec
+package codecs
 
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"space-mission/pkg/models"
 	"time"
+
+	"space-mission/pkg/models"
 )
 
 const (
@@ -47,13 +47,6 @@ const (
 
 	// Coordinate sizes
 	FloatSize = 4 // float32
-)
-
-var (
-	ErrUnsupportedMessageType = errors.New("unsupported message type")
-	ErrInvalidMessageType     = errors.New("invalid message type")
-	ErrPacketTooShort         = errors.New("packet too short")
-	ErrInvalidShapeType       = errors.New("invalid shape type")
 )
 
 // MissionCodec handles serialization and deserialization of MissionLink messages

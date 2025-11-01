@@ -1,9 +1,8 @@
-package telemetrycodec
+package codecs
 
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,28 +11,24 @@ import (
 
 const (
 	// Field sizes in bytes
-	LengthPrefixSize     = 4  // uint32
-	RoverIDSize          = 2  // uint16
-	PositionSize         = 12 // 3 * float32
-	OperationalStateSize = 1  // uint8
-	BatteryLevelSize     = 4  // float32
-	VelocitySize         = 8  // 2 * float32
-	TemperatureSize      = 4  // float32
-	HealthStatusSize     = 1  // uint8
-	SystemHealthSize     = 5  // 5 * uint8 (5 health statuses)
-	TimestampSize        = 8  // time.Time
+	TelemetryLengthPrefixSize     = 4  // uint32
+	TelemetryRoverIDSize          = 2  // uint16
+	TelemetryPositionSize         = 12 // 3 * float32
+	TelemetryOperationalStateSize = 1  // uint8
+	TelemetryBatteryLevelSize     = 4  // float32
+	TelemetryVelocitySize         = 8  // 2 * float32
+	TelemetryTemperatureSize      = 4  // float32
+	TelemetryHealthStatusSize     = 1  // uint8
+	TelemetrySystemHealthSize     = 5  // 5 * uint8 (5 health statuses)
+	TelemetryTimestampSize        = 8  // time.Time
 
 	// Total payload size (without length prefix)
-	PayloadSize = RoverIDSize + PositionSize + OperationalStateSize + BatteryLevelSize +
-		VelocitySize + TemperatureSize + SystemHealthSize + TimestampSize
+	TelemetryPayloadSize = TelemetryRoverIDSize + TelemetryPositionSize + TelemetryOperationalStateSize +
+		TelemetryBatteryLevelSize + TelemetryVelocitySize + TelemetryTemperatureSize +
+		TelemetryHealthStatusSize + TelemetrySystemHealthSize + TelemetryTimestampSize
 
 	// Total packet size including length prefix
-	TelemetryPacketSize = LengthPrefixSize + PayloadSize
-)
-
-var (
-	ErrPacketTooShort    = errors.New("packet too short")
-	ErrInvalidPacketSize = errors.New("invalid packet size in length prefix")
+	TelemetryPacketSize = TelemetryLengthPrefixSize + TelemetryPayloadSize
 )
 
 // TelemetryCodec handles serialization and deserialization of Telemetry packets
