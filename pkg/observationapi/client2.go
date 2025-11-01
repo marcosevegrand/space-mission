@@ -1,60 +1,57 @@
-// ...existing code...
-package api
+package observationapi
 
 import (
-	"context"
-	"encoding/json"
-	"log"
-	"net"
-	"net/http"
-	"strconv"
-	"sync"
-	"time"
+    "context"
+    "encoding/json"
+    "log"
+    "net"
+    "net/http"
+    "strconv"
+    "sync"
+    "time"
 
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
+    "github.com/gorilla/mux"
+    "github.com/gorilla/websocket"
 
-	"space-mission/pkg/models"
+    "space-mission/internal/memory"
+    "space-mission/pkg/models"
 )
 
 // APIServer exposes observation endpoints and a realtime WebSocket feed.
 type APIServer struct {
-	port string
+    port string
 
-	mu sync.RWMutex
-	// latest telemetry per rover id
-	telemetry map[uint16]models.Telemetry
-	// missions map by id (simple in-memory view)
-	missions map[string]*models.Mission
+    mu sync.RWMutex
 
-	// WebSocket management
-	upgrader   websocket.Upgrader
-	wsClients  map[*websocket.Conn]bool
-	broadcast  chan []byte
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
+    // replace local maps with centralized store
+    store *memory.MemoryStore
 
-	httpServer *http.Server
+    // WebSocket management
+    upgrader   websocket.Upgrader
+    wsClients  map[*websocket.Conn]bool
+    broadcast  chan []byte
+    register   chan *websocket.Conn
+    unregister chan *websocket.Conn
 
-	// self-update interval (zero disables)
-	selfUpdateInterval time.Duration
+    httpServer *http.Server
+
+    // self-update interval (zero disables)
+    selfUpdateInterval time.Duration
 }
 
 // NewAPIServer creates an APIServer listening on the given port (e.g. ":8080")
-func NewAPIServer(port string) *APIServer {
-	s := &APIServer{
-		port:       port,
-		telemetry:  make(map[uint16]models.Telemetry),
-		missions:   make(map[string]*models.Mission),
-		upgrader:   websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		wsClients:  make(map[*websocket.Conn]bool),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *websocket.Conn, 16),
-		unregister: make(chan *websocket.Conn, 16),
-		// default self-update every 30s (adjust as needed)
-		selfUpdateInterval: 5 * time.Second,
-	}
-	return s
+func NewAPIServer(port string, store *memory.MemoryStore) *APIServer {
+    s := &APIServer{
+        port:       port,
+        store:      store,
+        upgrader:   websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+        wsClients:  make(map[*websocket.Conn]bool),
+        broadcast:  make(chan []byte, 256),
+        register:   make(chan *websocket.Conn, 16),
+        unregister: make(chan *websocket.Conn, 16),
+        selfUpdateInterval: 5 * time.Second,
+    }
+    return s
 }
 
 // Start starts the HTTP server and ws broadcast loops
@@ -120,53 +117,50 @@ func (s *APIServer) Shutdown(ctx context.Context) error {
 // selfUpdateLoop periodically snapshots current telemetry & missions and broadcasts them.
 // This keeps connected WS clients in sync even if no new pushes were received.
 func (s *APIServer) selfUpdateLoop(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
 
-	for range ticker.C {
-		// snapshot telemetry
-		s.mu.RLock()
-		telems := make([]models.Telemetry, 0, len(s.telemetry))
-		for _, t := range s.telemetry {
-			telems = append(telems, t)
-		}
-		missions := make([]*models.Mission, 0, len(s.missions))
-		for _, m := range s.missions {
-			missions = append(missions, m)
-		}
-		s.mu.RUnlock()
+    for range ticker.C {
+        // snapshot rover telemetry and missions from store
+        rovers := s.store.GetRovers()
+        missions := s.store.ListMissions()
 
-		// broadcast full telemetry snapshot
-		if len(telems) > 0 {
-			msg := map[string]interface{}{
-				"type":      "telemetry_snapshot",
-				"telemetry": telems,
-				"time":      time.Now(),
-			}
-			if b, err := json.Marshal(msg); err == nil {
-				select {
-				case s.broadcast <- b:
-				default:
-					// drop if channel full
-				}
-			}
-		}
+        // build telemetry snapshot from rovers' LastTelemetry
+        telems := make([]models.Telemetry, 0, len(rovers))
+        for _, r := range rovers {
+            if r.LastTelemetry != nil {
+                telems = append(telems, *r.LastTelemetry)
+            }
+        }
 
-		// broadcast missions snapshot
-		if len(missions) > 0 {
-			msg := map[string]interface{}{
-				"type":     "missions_snapshot",
-				"missions": missions,
-				"time":     time.Now(),
-			}
-			if b, err := json.Marshal(msg); err == nil {
-				select {
-				case s.broadcast <- b:
-				default:
-				}
-			}
-		}
-	}
+        if len(telems) > 0 {
+            msg := map[string]interface{}{
+                "type":      "telemetry_snapshot",
+                "telemetry": telems,
+                "time":      time.Now(),
+            }
+            if b, err := json.Marshal(msg); err == nil {
+                select {
+                case s.broadcast <- b:
+                default:
+                }
+            }
+        }
+
+        if len(missions) > 0 {
+            msg := map[string]interface{}{
+                "type":     "missions_snapshot",
+                "missions": missions,
+                "time":     time.Now(),
+            }
+            if b, err := json.Marshal(msg); err == nil {
+                select {
+                case s.broadcast <- b:
+                default:
+                }
+            }
+        }
+    }
 }
 
 // SetSelfUpdateInterval configures how often the server broadcasts snapshots.
@@ -181,147 +175,133 @@ func (s *APIServer) SetSelfUpdateInterval(d time.Duration) {
 // broadcastSnapshots snapshots current state and sends to broadcast channel.
 // extracted from selfUpdateLoop so we can call it immediately.
 func (s *APIServer) broadcastSnapshots() {
-	s.mu.RLock()
-	telems := make([]models.Telemetry, 0, len(s.telemetry))
-	for _, t := range s.telemetry {
-		telems = append(telems, t)
-	}
-	missions := make([]*models.Mission, 0, len(s.missions))
-	for _, m := range s.missions {
-		missions = append(missions, m)
-	}
-	s.mu.RUnlock()
+    // get rovers & missions from centralized store
+    rovers := s.store.GetRovers()
+    telems := make([]models.Telemetry, 0, len(rovers))
+    for _, r := range rovers {
+        if r.LastTelemetry != nil {
+            telems = append(telems, *r.LastTelemetry)
+        }
+    }
+    missions := s.store.ListMissions()
 
-	if len(telems) > 0 {
-		msg := map[string]interface{}{
-			"type":      "telemetry_snapshot",
-			"telemetry": telems,
-			"time":      time.Now(),
-		}
-		if b, err := json.Marshal(msg); err == nil {
-			select {
-			case s.broadcast <- b:
-			default:
-			}
-		}
-	}
+    if len(telems) > 0 {
+        msg := map[string]interface{}{
+            "type":      "telemetry_snapshot",
+            "telemetry": telems,
+            "time":      time.Now(),
+        }
+        if b, err := json.Marshal(msg); err == nil {
+            select {
+            case s.broadcast <- b:
+            default:
+            }
+        }
+    }
 
-	if len(missions) > 0 {
-		msg := map[string]interface{}{
-			"type":     "missions_snapshot",
-			"missions": missions,
-			"time":     time.Now(),
-		}
-		if b, err := json.Marshal(msg); err == nil {
-			select {
-			case s.broadcast <- b:
-			default:
-			}
-		}
-	}
+    if len(missions) > 0 {
+        msg := map[string]interface{}{
+            "type":     "missions_snapshot",
+            "missions": missions,
+            "time":     time.Now(),
+        }
+        if b, err := json.Marshal(msg); err == nil {
+            select {
+            case s.broadcast <- b:
+            default:
+            }
+        }
+    }
 }
 
 // UpdateTelemetry stores latest telemetry and broadcasts to WS clients
 func (s *APIServer) UpdateTelemetry(t models.Telemetry) {
-	s.mu.Lock()
-	s.telemetry[t.RoverID] = t
-	s.mu.Unlock()
+    s.store.StoreTelemetry(t)
 
-	// Prepare broadcast message
-	msg := map[string]interface{}{
-		"type":      "telemetry",
-		"rover_id":  t.RoverID,
-		"telemetry": t,
-		"time":      time.Now(),
-	}
-	b, _ := json.Marshal(msg)
+    // Prepare broadcast message
+    msg := map[string]interface{}{
+        "type":      "telemetry",
+        "rover_id":  t.RoverID,
+        "telemetry": t,
+        "time":      time.Now(),
+    }
+    b, _ := json.Marshal(msg)
 
-	select {
-	case s.broadcast <- b:
-	default:
-		// drop if channel full
-	}
+    select {
+    case s.broadcast <- b:
+    default:
+    }
 }
 
 // UpdateMission stores/updates a mission and broadcasts to WS clients
 func (s *APIServer) UpdateMission(m *models.Mission) {
-	s.mu.Lock()
-	s.missions[m.ID] = m
-	s.mu.Unlock()
+    s.store.StoreMission(m)
 
-	msg := map[string]interface{}{
-		"type":    "mission",
-		"mission": m,
-		"time":    time.Now(),
-	}
-	b, _ := json.Marshal(msg)
-	select {
-	case s.broadcast <- b:
-	default:
-	}
+    msg := map[string]interface{}{
+        "type":    "mission",
+        "mission": m,
+        "time":    time.Now(),
+    }
+    b, _ := json.Marshal(msg)
+    select {
+    case s.broadcast <- b:
+    default:
+    }
 }
 
 // HTTP handlers
 
 func (s *APIServer) handleGetTelemetry(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	list := make([]models.Telemetry, 0, len(s.telemetry))
-	for _, t := range s.telemetry {
-		list = append(list, t)
-	}
-
-	writeJSON(w, list)
+    rovers := s.store.GetRovers()
+    list := make([]models.Telemetry, 0, len(rovers))
+    for _, r := range rovers {
+        if r.LastTelemetry != nil {
+            list = append(list, *r.LastTelemetry)
+        }
+    }
+    writeJSON(w, list)
 }
 
 func (s *APIServer) handleGetRovers(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	type roverSummary struct {
-		RoverID   uint16            `json:"rover_id"`
-		Telemetry *models.Telemetry `json:"telemetry,omitempty"`
-		Connected bool              `json:"connected"`
-	}
-	list := make([]roverSummary, 0, len(s.telemetry))
-	for id, t := range s.telemetry {
-		copy := t
-		list = append(list, roverSummary{RoverID: id, Telemetry: &copy, Connected: true})
-	}
-
-	writeJSON(w, list)
+    rovers := s.store.GetRovers()
+    type roverSummary struct {
+        RoverID   uint16            `json:"rover_id"`
+        Telemetry *models.Telemetry `json:"telemetry,omitempty"`
+        Connected bool              `json:"connected"`
+    }
+    list := make([]roverSummary, 0, len(rovers))
+    for _, rr := range rovers {
+        var tele *models.Telemetry
+        if rr.LastTelemetry != nil {
+            copy := *rr.LastTelemetry
+            tele = &copy
+        }
+        list = append(list, roverSummary{RoverID: rr.ID, Telemetry: tele, Connected: rr.Connected})
+    }
+    writeJSON(w, list)
 }
 
 func (s *APIServer) handleGetRover(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	idStr := vars["id"]
-	id64, err := strconv.ParseUint(idStr, 10, 16)
-	if err != nil {
-		http.Error(w, "invalid rover id", http.StatusBadRequest)
-		return
-	}
-	id := uint16(id64)
+    vars := mux.Vars(r)
+    idStr := vars["id"]
+    id64, err := strconv.ParseUint(idStr, 10, 16)
+    if err != nil {
+        http.Error(w, "invalid rover id", http.StatusBadRequest)
+        return
+    }
+    id := uint16(id64)
 
-	s.mu.RLock()
-	t, ok := s.telemetry[id]
-	s.mu.RUnlock()
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	writeJSON(w, t)
+    t, ok := s.store.GetLatestTelemetry(id)
+    if !ok {
+        http.NotFound(w, r)
+        return
+    }
+    writeJSON(w, t)
 }
 
 func (s *APIServer) handleGetMissions(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	list := make([]*models.Mission, 0, len(s.missions))
-	for _, m := range s.missions {
-		list = append(list, m)
-	}
-	writeJSON(w, list)
+    missions := s.store.ListMissions()
+    writeJSON(w, missions)
 }
 
 // WebSocket handler
