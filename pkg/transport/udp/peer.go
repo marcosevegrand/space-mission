@@ -1,4 +1,4 @@
-package udplink
+package udp
 
 import (
 	"fmt"
@@ -32,19 +32,20 @@ type Peer[T any] struct {
 	conn *net.UDPConn
 
 	// Configuration
-	addr         string
-	encoder      interfaces.Encoder[T]
-	decoder      interfaces.Decoder[T]
-	handler      interfaces.UDPHandler[T]
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	retxTimeout  time.Duration
-	maxRetries   uint16
+	addr           string
+	encoder        interfaces.Encoder[T]
+	decoder        interfaces.Decoder[T]
+	handler        interfaces.UDPHandler[T]
+	receivedSeqTTL time.Duration
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+	retxTimeout    time.Duration
+	maxRetries     uint16
 
 	// Reliability
 	nextSeqNum      uint32
-	pendingPackets  map[uint32]*PendingPacket  // Keyed by local seqNum only
-	receivedSeqNums map[ReceivedPacketKey]bool // Keyed by (sender, seqNum) for duplicate detection
+	pendingPackets  map[uint32]*PendingPacket       // Keyed by local seqNum only
+	receivedSeqNums map[ReceivedPacketKey]time.Time // Keyed by (sender, seqNum) for duplicate detection
 	seqMu           sync.Mutex
 
 	// Lifecycle management
@@ -55,21 +56,24 @@ type Peer[T any] struct {
 }
 
 func NewPeer[T any](
-	addr string, encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.UDPHandler[T],
-	readTimeout time.Duration, writeTimeout time.Duration, retxTimeout time.Duration, maxRetries uint16,
+	addr string,
+	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.UDPHandler[T],
+	receivedSeqTTL time.Duration, readTimeout time.Duration, writeTimeout time.Duration,
+	retxTimeout time.Duration, maxRetries uint16,
 ) *Peer[T] {
 	return &Peer[T]{
 		addr:            addr,
 		encoder:         encoder,
 		decoder:         decoder,
 		handler:         handler,
+		receivedSeqTTL:  receivedSeqTTL,
 		readTimeout:     readTimeout,
 		writeTimeout:    writeTimeout,
 		retxTimeout:     retxTimeout,
 		maxRetries:      maxRetries,
 		stopChan:        make(chan struct{}),
 		pendingPackets:  make(map[uint32]*PendingPacket),
-		receivedSeqNums: make(map[ReceivedPacketKey]bool),
+		receivedSeqNums: make(map[ReceivedPacketKey]time.Time),
 		nextSeqNum:      1,
 	}
 }
@@ -79,7 +83,7 @@ func (p *Peer[T]) Start() error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
-		return fmt.Errorf("server already running")
+		return fmt.Errorf("peer already running")
 	}
 
 	// Resolve peer address
@@ -110,6 +114,10 @@ func (p *Peer[T]) Start() error {
 	// Start retransmission loop
 	p.wg.Add(1)
 	go p.retransmissionLoop()
+
+	// Start cleanup loop
+	p.wg.Add(1)
+	go p.cleanupLoop()
 
 	return nil
 }
@@ -205,14 +213,14 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 
 		// Check if we've already processed this sequence number from this sender
 		p.seqMu.Lock()
-		alreadyProcessed := p.receivedSeqNums[key]
-		if !alreadyProcessed {
-			p.receivedSeqNums[key] = true
+		_, ok := p.receivedSeqNums[key]
+		if !ok {
+			p.receivedSeqNums[key] = time.Now()
 		}
 		p.seqMu.Unlock()
 
 		// If we've already processed this seq num from this sender, it's a duplicate - just ACK and return
-		if alreadyProcessed {
+		if ok {
 			log.Printf("[UDP] Received duplicate packet seq %d from %s (ignoring data)", packet.SeqNum, senderAddr)
 			return nil
 		}
@@ -226,7 +234,11 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 		}
 
 		// Pass to handler
-		go p.handler(data, senderAddr)
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			p.handler(data, senderAddr)
+		}()
 
 		return nil
 	}
@@ -253,9 +265,6 @@ func (p *Peer[T]) sendACK(seqNum uint32, addr *net.UDPAddr) error {
 }
 
 // Send sends data to a peer and returns a channel for optional ACK confirmation
-// The returned channel will be closed when ACK is received or if peer stops
-// Caller can optionally wait on the channel to confirm delivery
-// Returns (ackChan, error) where error is immediate send error only
 func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 	p.mu.Lock()
 	if !p.running {
@@ -304,6 +313,7 @@ func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 	if err != nil {
 		p.seqMu.Lock()
 		delete(p.pendingPackets, seqNum)
+		close(pending.AckChan)
 		p.seqMu.Unlock()
 		return nil, fmt.Errorf("failed to send packet: %w", err)
 	}
@@ -376,6 +386,29 @@ func (p *Peer[T]) checkRetransmissions() {
 			// Update pending packet
 			pending.SendTime = now
 			pending.RetryCount++
+		}
+	}
+}
+
+func (p *Peer[T]) cleanupLoop() {
+	defer p.wg.Done()
+
+	p.mu.Lock()
+	receivedSeqTTL := p.receivedSeqTTL
+	p.mu.Unlock()
+
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case <-time.After(receivedSeqTTL / 4): // Check 4 times per cleanup timeout
+			p.seqMu.Lock()
+			for key, timestamp := range p.receivedSeqNums {
+				if time.Since(timestamp) > receivedSeqTTL {
+					delete(p.receivedSeqNums, key)
+				}
+			}
+			p.seqMu.Unlock()
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package tcpstream
+package tcp
 
 import (
 	"fmt"

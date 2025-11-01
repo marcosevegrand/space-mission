@@ -1,6 +1,6 @@
 // Package tcp provides a simplified TCP client for sending serialized data
 // The client serializes data using a provided encoder and sends it over TCP
-package tcpstream
+package tcp
 
 import (
 	"fmt"

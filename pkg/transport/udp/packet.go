@@ -1,4 +1,4 @@
-package udplink
+package udp
 
 import (
 	"encoding/binary"

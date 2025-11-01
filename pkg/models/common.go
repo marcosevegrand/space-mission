@@ -1,14 +1,35 @@
 package models
 
-type Circle struct {
-	Center [2]float64
-	Radius float64
+type Shape uint8
+
+const (
+	ShapeCircle Shape = iota + 1
+	ShapeRectangle
+)
+
+func (s Shape) String() string {
+	return [...]string{
+		"circle",
+		"rectangle",
+	}[s-1]
 }
 
-type Rectangle struct {
-	TopLeft     [2]float64
-	BottomRight [2]float64
+type CoordsCircle struct {
+	Center [2]float32
+	Radius float32
 }
+
+type CoordsRectangle struct {
+	TopLeft     [2]float32
+	BottomRight [2]float32
+}
+
+type Coords interface {
+	isCoords()
+}
+
+func (c CoordsCircle) isCoords()    {}
+func (r CoordsRectangle) isCoords() {}
 
 // Position represents a 3D coordinate in space.
 type Position struct {
@@ -34,7 +55,13 @@ const (
 )
 
 func (os OperationalState) String() string {
-	return [...]string{"idle", "moving", "onMission", "Error", "Unknown"}[os-1]
+	return [...]string{
+		"idle",
+		"moving",
+		"on_mission",
+		"error",
+		"unknown",
+	}[os-1]
 }
 
 // HealthStatus represents the health status of a system or subsystem.
@@ -42,11 +69,15 @@ type HealthStatus uint8
 
 // Health status levels for rover systems.
 const (
-	HealthOK      HealthStatus = 0 // System is operating normally
-	HealthWarning HealthStatus = 1 // System has minor issues
-	HealthError   HealthStatus = 2 // System has critical issues
-	HealthUnknown HealthStatus = 3 // System status is unknown
+	HealthOK       HealthStatus = iota + 1 // System is operating normally
+	HealthWarning                          // System has minor issues
+	HealthCritical                         // System has critical issues
+	HealthUnknown                          // System status is unknown
 )
+
+func (hs HealthStatus) String() string {
+	return [...]string{"ok", "warning", "critical", "unknown"}[hs-1]
+}
 
 // SystemHealth represents the health status of all major rover subsystems.
 // Each field indicates the operational status of a specific subsystem.
