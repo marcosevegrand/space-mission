@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-type Rover struct {
+type RoverInfo struct {
 	RoverID          uint16                    // Rover unique identifier (e.g., "2")
 	ConnectionInfo   map[string]ConnectionInfo // Connection data per protocol (TCP, UDP)
 	Position         Position                  // Current 3D position

@@ -105,8 +105,6 @@ func (p *Peer[T]) Start() error {
 	p.running = true
 	p.mu.Unlock()
 
-	log.Printf("[UDP] Listening on %s", p.addr)
-
 	// Start receive loop
 	p.wg.Add(1)
 	go p.receiveLoop()
@@ -129,6 +127,7 @@ func (p *Peer[T]) receiveLoop() {
 	buffer := make([]byte, 65535) // Max UDP packet size
 
 	for {
+
 		select {
 		case <-p.stopChan:
 			return
@@ -151,7 +150,7 @@ func (p *Peer[T]) receiveLoop() {
 			case <-p.stopChan:
 				return
 			default:
-				log.Printf("[UDP] Read error: %v", err)
+				log.Printf("[UDP] read error: %v", err)
 				continue
 			}
 		}
@@ -162,7 +161,7 @@ func (p *Peer[T]) receiveLoop() {
 
 		err = p.receive(packet, addr)
 		if err != nil {
-			log.Printf("[UDP] Failed to handle packet: %v", err)
+			log.Printf("[UDP] failed to handle packet: %v", err)
 			continue
 		}
 	}
@@ -175,12 +174,12 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 		return err
 	}
 
+	senderAddr := addr.String()
+
 	// Validate checksum
 	if !ValidateChecksum(packet) {
-		return fmt.Errorf("checksum mismatch for seq %d from %s", packet.SeqNum, addr.String())
+		return fmt.Errorf("checksum mismatch for seq %d from %s", packet.SeqNum, senderAddr)
 	}
-
-	senderAddr := addr.String()
 
 	// Handle ACK packets
 	if packet.IsACK() {
@@ -190,7 +189,6 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 			delete(p.pendingPackets, packet.SeqNum)
 			pending.AckChan <- true // Signal that ACK was received
 			close(pending.AckChan)
-			log.Printf("[UDP] ACK received for seq %d from %s", packet.SeqNum, senderAddr)
 		}
 		p.seqMu.Unlock()
 
@@ -201,9 +199,6 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 	if packet.IsDATA() {
 		// Send ACK back immediately (whether it's a duplicate or not)
 		err := p.sendACK(packet.SeqNum, addr)
-		if err != nil {
-			log.Printf("[UDP] Failed to send ACK for seq %d to %s: %v", packet.SeqNum, senderAddr, err)
-		}
 
 		// Create composite key for duplicate detection
 		key := ReceivedPacketKey{
@@ -221,13 +216,10 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 
 		// If we've already processed this seq num from this sender, it's a duplicate - just ACK and return
 		if ok {
-			log.Printf("[UDP] Received duplicate packet seq %d from %s (ignoring data)", packet.SeqNum, senderAddr)
 			return nil
 		}
 
 		// First time seeing this seq num from this sender - decode and process
-		log.Printf("[UDP] Received data packet seq %d from %s", packet.SeqNum, senderAddr)
-
 		data, err := p.decoder(packet.Payload)
 		if err != nil {
 			return fmt.Errorf("failed to decode payload: %w", err)
@@ -318,8 +310,6 @@ func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 		return nil, fmt.Errorf("failed to send packet: %w", err)
 	}
 
-	log.Printf("[UDP] Sent packet seq %d to %s", seqNum, addrStr)
-
 	// Return the channel so caller can optionally wait for ACK
 	return pending.AckChan, nil
 }
@@ -338,7 +328,6 @@ func (p *Peer[T]) sendPacket(packet []byte, addr *net.UDPAddr) error {
 // retransmissionLoop periodically checks for packets that need retransmission
 func (p *Peer[T]) retransmissionLoop() {
 	defer p.wg.Done()
-
 	ticker := time.NewTicker(p.retxTimeout / 2) // Check twice per retransmission timeout
 	defer ticker.Stop()
 
@@ -366,7 +355,6 @@ func (p *Peer[T]) checkRetransmissions() {
 		if elapsed >= p.retxTimeout {
 			// Check if max retries exceeded
 			if pending.RetryCount >= p.maxRetries {
-				log.Printf("[UDP] Dropping packet seq %d to %s after %d retries", seqNum, pending.Destination.String(), pending.RetryCount)
 				delete(p.pendingPackets, seqNum)
 				select {
 				case pending.AckChan <- false:
@@ -379,9 +367,8 @@ func (p *Peer[T]) checkRetransmissions() {
 			// Retransmit packet
 			err := p.sendPacket(pending.Data, pending.Destination)
 			if err != nil {
-				log.Printf("[UDP] Failed to retransmit seq %d to %s: %v", seqNum, pending.Destination.String(), err)
+				continue
 			}
-			log.Printf("[UDP] Retransmitted packet seq %d to %s (retry %d)", seqNum, pending.Destination.String(), pending.RetryCount+1)
 
 			// Update pending packet
 			pending.SendTime = now
@@ -423,7 +410,6 @@ func (p *Peer[T]) Stop() error {
 	p.running = false
 	p.mu.Unlock()
 
-	log.Printf("[UDP] Shutting down...")
 	close(p.stopChan)
 
 	// Close connection
@@ -440,7 +426,6 @@ func (p *Peer[T]) Stop() error {
 	p.seqMu.Unlock()
 
 	p.wg.Wait()
-	log.Printf("[UDP] Shutdown complete")
 
 	return nil
 }

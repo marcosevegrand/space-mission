@@ -1,6 +1,7 @@
 package tcp
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -61,30 +62,6 @@ func NewServer[T any](
 	}
 }
 
-// UpdateListenTimeout updates the listen timeout for incoming connections
-func (s *Server[T]) UpdateListenTimeout(timeout time.Duration) {
-	s.mu.Lock()
-	s.listenTimeout = timeout
-	s.mu.Unlock()
-	log.Printf("Updated listen timeout to %s", timeout)
-}
-
-// UpdateReadTimeout updates the read timeout for incoming connections
-func (s *Server[T]) UpdateReadTimeout(timeout time.Duration) {
-	s.mu.Lock()
-	s.readTimeout = timeout
-	s.mu.Unlock()
-	log.Printf("Updated read timeout to %s", timeout)
-}
-
-// UpdateHandler updates the data handler callback
-func (s *Server[T]) UpdateHandler(handler interfaces.TCPHandler[T]) {
-	s.mu.Lock()
-	s.handler = handler
-	s.mu.Unlock()
-	log.Printf("Updated handler")
-}
-
 // Start begins listening for incoming connections
 func (s *Server[T]) Start() error {
 	s.mu.Lock()
@@ -108,8 +85,6 @@ func (s *Server[T]) Start() error {
 	s.listener = listener
 	s.running = true
 	s.mu.Unlock()
-
-	log.Printf("[TCP Server] Listening on %s", s.address)
 
 	s.wg.Add(1)
 	go s.acceptLoop()
@@ -151,8 +126,6 @@ func (s *Server[T]) acceptLoop() {
 			continue
 		}
 
-		log.Printf("[TCP Server] New connection from %s", conn.RemoteAddr())
-
 		s.wg.Add(1)
 		go s.handleConnection(conn)
 	}
@@ -163,10 +136,10 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 	defer s.wg.Done()
 	defer func() {
 		conn.Close()
-		log.Printf("[TCP Server] Connection closed: %s", conn.RemoteAddr())
 	}()
 
 	for {
+
 		select {
 		case <-s.stopChan:
 			return
@@ -198,12 +171,12 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 			return
 		}
 
-		// Parse packet length ?????
-		packetLength := uint32(lengthBuf[0])<<24 | uint32(lengthBuf[1])<<16 |
-			uint32(lengthBuf[2])<<8 | uint32(lengthBuf[3])
+		// Parse packet length
+		packetLength := binary.BigEndian.Uint32(lengthBuf)
+		fmt.Printf("Packet length: %d\n", packetLength)
 
 		// Sanity checks
-		if packetLength > 10*1024*1024 {
+		if packetLength > 10*1024 {
 			log.Printf("[TCP Server] Packet too large: %d bytes", packetLength)
 			return
 		}
@@ -247,8 +220,6 @@ func (s *Server[T]) Stop() {
 	s.running = false
 	s.mu.Unlock()
 
-	log.Printf("[TCP Server] Shutting down...")
-
 	close(s.stopChan)
 
 	if s.listener != nil {
@@ -256,5 +227,4 @@ func (s *Server[T]) Stop() {
 	}
 
 	s.wg.Wait()
-	log.Printf("[TCP Server] Shutdown complete")
 }

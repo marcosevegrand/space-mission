@@ -23,9 +23,9 @@ const (
 	TelemetryTimestampSize        = 8  // time.Time
 
 	// Total payload size (without length prefix)
-	TelemetryPayloadSize = TelemetryRoverIDSize + TelemetryPositionSize + TelemetryOperationalStateSize +
-		TelemetryBatteryLevelSize + TelemetryVelocitySize + TelemetryTemperatureSize +
-		TelemetryHealthStatusSize + TelemetrySystemHealthSize + TelemetryTimestampSize
+	TelemetryPayloadSize = TelemetryRoverIDSize + TelemetryPositionSize +
+		TelemetryOperationalStateSize + TelemetryBatteryLevelSize + TelemetryVelocitySize +
+		TelemetryTemperatureSize + TelemetrySystemHealthSize + TelemetryTimestampSize
 
 	// Total packet size including length prefix
 	TelemetryPacketSize = TelemetryLengthPrefixSize + TelemetryPayloadSize

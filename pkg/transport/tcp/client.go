@@ -66,37 +66,13 @@ func NewClient[T any](
 	}
 }
 
-// UpdateDialTimeout updates the timeout for dial operations
-func (c *Client[T]) UpdateDialTimeout(timeout time.Duration) {
-	c.mu.Lock()
-	c.dialTimeout = timeout
-	c.mu.Unlock()
-	log.Printf("Updated dial timeout to %s", timeout)
-}
-
-// UpdateWriteTimeout updates the timeout for write operations
-func (c *Client[T]) UpdateWriteTimeout(timeout time.Duration) {
-	c.mu.Lock()
-	c.writeTimeout = timeout
-	c.mu.Unlock()
-	log.Printf("Updated write timeout to %s", timeout)
-}
-
-// UpdateCallInterval updates the interval for calling data source
-func (c *Client[T]) UpdateCallInterval(interval time.Duration) {
-	c.mu.Lock()
-	c.callInterval = interval
-	c.mu.Unlock()
-	log.Printf("Updated call interval to %s", interval)
-}
-
 // Connect establishes a connection to the server
 func (c *Client[T]) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.connected {
-		return nil
+		return fmt.Errorf("already connected")
 	}
 
 	conn, err := net.DialTimeout("tcp", c.serverAddress, c.dialTimeout)
@@ -112,7 +88,6 @@ func (c *Client[T]) Connect() error {
 
 	c.conn = tcpConn
 	c.connected = true
-	log.Printf("[TCP Client] Connected to %s", c.serverAddress)
 
 	return nil
 }
@@ -165,6 +140,7 @@ func (c *Client[T]) SendStream(dataSource func() T) error {
 			case <-c.stopChan:
 				return
 			case <-ticker.C:
+
 				if !c.connected {
 					return
 				}
@@ -177,14 +153,11 @@ func (c *Client[T]) SendStream(dataSource func() T) error {
 			}
 		}
 	}()
-
-	log.Printf("[TCP Client] Streaming started (interval: %v)", c.callInterval)
 	return nil
 }
 
 // Close closes the connection and stops the client
 func (c *Client[T]) Close() {
-	log.Printf("[TCP Client] Closing connection...")
 
 	close(c.stopChan)
 
@@ -196,5 +169,4 @@ func (c *Client[T]) Close() {
 	c.mu.Unlock()
 
 	c.wg.Wait()
-	log.Printf("[TCP Client] Closed")
 }

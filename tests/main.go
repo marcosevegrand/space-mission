@@ -119,3 +119,28 @@ func main() {
 	wait := <-c
 	fmt.Println("Wait:", wait)
 }
+nmentalMonitoring,
+		GeographicArea: models.GeographicArea{
+			Shape: models.ShapeCircle,
+			Coordinates: models.CoordsCircle{
+				Center: [2]float32{10, 10},
+				Radius: 1000,
+			},
+		},
+		Status:   models.MissionPending,
+		Progress: 0,
+	}
+	fmt.Println("[MOTHERSHIP] >> mothership started")
+
+	fmt.Println("[MOTHERSHIP] >> starting telemetry stream")
+	m.telememetryStream.Start()
+	fmt.Println("[MOTHERSHIP] >> telemetry stream started")
+
+	fmt.Println("[MOTHERSHIP] >> starting mission link")
+	m.missionLink.Start()
+	fmt.Println("[MOTHERSHIP] >> mission link started")
+
+	wait := <-c
+	fmt.Println("Wait:", wait)
+
+}
