@@ -31,6 +31,10 @@ type RoverSimulator struct {
 	operationalState models.OperationalState
 	systemHealth     models.SystemHealth
 
+	// Simulation
+	envData   simulation.EnvironmentalData
+	lastSimAt time.Time
+
 	// Mission state
 	currentMission   *models.Mission
 	missionStartTime time.Time
@@ -42,91 +46,91 @@ type RoverSimulator struct {
 	baseTemperature  float32
 }
 
-func NewRoverSimulator(roverID uint16) *RoverSimulator {
-	// Random starting position
-	rand.Seed(time.Now().UnixNano() + int64(roverID))
+func NewRoverSimulator(roverID uint16, tcpServerAddr string, udpServerAddr string) (*Rover, error) {
+	now := time.Now()
+	envData := simulation.GenerateEnvironmentalData(now)
 
-	return &RoverSimulator{
-		roverID: roverID,
-		position: models.Position{
-			X: float32(rand.Float64() * 100),
-			Y: float32(rand.Float64() * 100),
-			Z: 0,
-		},
-		velocity: models.Velocity{
-			Speed:     0,
-			Direction: 0,
-		},
-		batteryLevel:     22.0,
-		temperature:      20.0 + float32(rand.Float64()*5),
-		operationalState: models.StateIdle,
-		systemHealth: models.SystemHealth{
-			Overall:       models.HealthOK,
-			Motors:        models.HealthOK,
-			Sensors:       models.HealthOK,
-			Communication: models.HealthOK,
-			PowerSystem:   models.HealthOK,
-		},
-		movementSpeed:    1.5,
-		batteryDrainRate: 0.05,
-		baseTemperature:  20.0,
+	simulator := NewRoverSimulator(roverID)
+	simulator.envData = envData
+	simulator.lastSimAt = now
+
+	rover := &Rover{
+		simulator:      simulator,
+		telemetryCodec: telemetrycodec.NewTelemetryCodec(),
+		missionCodec:   missioncodec.NewMissionCodec(),
 	}
+
+	// Create TCP telemetry client
+	rover.telemetryClient = tcpstream.NewClient(
+		tcpServerAddr,
+		5*time.Second,
+		3*time.Second,
+		2*time.Second, // Send telemetry every 2 seconds
+		rover.telemetryCodec.Serialize,
+	)
+
+	// Create UDP mission client
+	var err error
+	rover.missionClient, err = udplink.NewClient(
+		udpServerAddr,
+		5*time.Second, // Dial timeout
+		2*time.Second, // Retransmit timeout
+		3,             // Max retries
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mission client: %w", err)
+	}
+
+	// Register handler for incoming mission messages
+	rover.missionClient.RegisterReceiveHandler(rover.handleMissionMessage)
+
+	return rover, nil
 }
 
 // UpdateSimulation updates rover state based on current mission
 func (rs *RoverSimulator) UpdateSimulation() {
-	// Use simulation helpers for battery consumption/charging.
-	// Keep existing drainMultiplier behavior, but derive rates from the simulation package.
-	// derive drain multiplier from operational state using a tagged switch
-	var drainMultiplier float32
-	switch rs.operationalState {
-	case models.StateMoving:
-		drainMultiplier = 2.0
-	case models.StateOnMission:
-		drainMultiplier = 1.5
-	default:
-		drainMultiplier = 1.0
+	now := time.Now()
+
+	// Atualiza dados ambientais periodicamente (e.g., a cada 60s)
+	if now.Sub(rs.lastSimAt) > 60*time.Second {
+		rs.envData = simulation.GenerateEnvironmentalData(now)
+		rs.lastSimAt = now
 	}
 
-	// Base consumption rate from simulation package (returns %/s)
+	// Obter luz solar realista
+	sunlight := simulation.IsSunlightAvailable(now, rs.envData)
+
+	// Consumo e carregamento com base em bateria e ambiente
 	baseRate := simulation.GetConsumptionRate(rs.operationalState)
+	consumptionRate := baseRate * rs.batteryDrainRate
 
-	// We keep the existing scaling factor batteryDrainRate to preserve prior tuning.
-	consumptionRate := baseRate * rs.batteryDrainRate * drainMultiplier
-
-	// Apply consumption assuming a 1s step (keeps behavior stable relative to previous simple subtraction).
 	rs.batteryLevel = simulation.ConsumeBattery(rs.batteryLevel, consumptionRate, 1*time.Second)
-	if rs.batteryLevel < 0 {
-		rs.batteryLevel = 0
-		rs.operationalState = models.StateError
-		rs.systemHealth.PowerSystem = models.HealthError
+
+	chargeRate := simulation.GetSolarChargeRate(sunlight)
+	if chargeRate > 0 && rs.operationalState != models.StateError {
+		prev := rs.batteryLevel
+		rs.batteryLevel = simulation.ChargeBattery(rs.batteryLevel, chargeRate, 1*time.Second)
+		if rs.batteryLevel > prev {
+			log.Printf("☀️ Rover %d charging: +%.2f%% (Battery=%.2f%%, Sunlight=%.0f%%)",
+				rs.roverID, rs.batteryLevel-prev, rs.batteryLevel, sunlight*100)
+		}
 	}
 
-	// Update temperature based on activity
+	// Atualização da temperatura
 	targetTemp := rs.baseTemperature
 	if rs.operationalState == models.StateMoving || rs.operationalState == models.StateOnMission {
 		targetTemp += 10.0
 	}
 	rs.temperature += (targetTemp - rs.temperature) * 0.1
 
-	// Solar charging (random sunlight like previous code)
-	sunlight := rand.Float32()
-	chargeRate := simulation.GetSolarChargeRate(sunlight)
-	if chargeRate > 0 && rs.operationalState != models.StateError {
-		prev := rs.batteryLevel
-		rs.batteryLevel = simulation.ChargeBattery(rs.batteryLevel, chargeRate, 1*time.Second)
-		if rs.batteryLevel > prev {
-			log.Printf("☀️ Rover %d a carregar: +%.2f%% (Bateria=%.2f%%, Sol=%.0f%%)",
-				rs.roverID, rs.batteryLevel-prev, rs.batteryLevel, sunlight*100)
-		}
-	}
-
-	// Update position if on mission
+	// Atualizar movimento se estiver em missão
 	if rs.currentMission != nil && rs.operationalState == models.StateOnMission {
+		// Use um método para atualizar a posição com velocidade considerando dt
+		// Aqui você pode chamar um método Move que calcula baseado em Velocity e dt
 		rs.moveTowardsTarget()
 	}
 
-	// Update health based on conditions
+	// Atualiza saúde do sistema
 	rs.updateHealth()
 }
 
