@@ -16,6 +16,11 @@ type APIRoverSummary struct {
 	Connected bool              `json:"connected"`
 }
 
+type APIClient struct {
+    baseURL    string
+    httpClient *http.Client
+}
+
 // func (c *APIClient) GetSystemStatus() (*APISystemStatus, error) {
 // 	resp, err := c.httpClient.Get(c.baseURL + "/api/status")
 // 	if err != nil {
