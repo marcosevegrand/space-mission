@@ -12,71 +12,77 @@ import (
 	"space-mission/pkg/interfaces"
 )
 
-// Server represents a TCP server that receives and deserializes packets
+// Server[T any] is a generic TCP server that accepts client connections and processes incoming data.
+// It uses a configurable decoder to deserialize packets and a handler to process the deserialized data.
+// The server is goroutine-safe and supports graceful shutdown.
 type Server[T any] struct {
-	listener *net.TCPListener
-
-	// Configuration
-	address       string
-	listenTimeout time.Duration
-	readTimeout   time.Duration
-	decoder       interfaces.Decoder[T]
-	handler       interfaces.TCPHandler[T]
-
-	// Lifecycle management
-	wg       sync.WaitGroup
-	stopChan chan struct{}
-	mu       sync.Mutex
-	running  bool
+	listener      *net.TCPListener         // TCP listener for accepting client connections
+	addr          string                   // Server address in format "host:port"
+	listenTimeout time.Duration            // Timeout for accepting new connections; defaults to 10s if not set
+	readTimeout   time.Duration            // Timeout for reading from each client connection; defaults to 3s if not set
+	decoder       interfaces.Decoder[T]    // Function to deserialize packet bytes into type T
+	handler       interfaces.TCPHandler[T] // Function to process deserialized data
+	wg            sync.WaitGroup           // WaitGroup to track all running goroutines
+	stopChan      chan struct{}            // Channel for signaling graceful shutdown
+	mu            sync.Mutex               // Mutex to protect the 'running' flag and concurrent access
+	running       bool                     // Flag indicating whether the server is currently running
 }
 
-// NewServer creates a new TCP server for receiving and deserializing packets
-// Parameters:
-//   - address: server listen address (e.g., ":8001")
-//   - listenTimeout: timeout for listening for incoming connections
-//   - readTimeout: timeout for reading packets
-//   - decoder: function to deserialize incoming bytes
-//   - handler: function to handle incoming data
+// NewServer[T any] creates and initializes a new TCP server instance.
+// It validates timeout parameters (zero values use defaults, negative values return errors)
+// and returns a configured server ready to start.
 func NewServer[T any](
-	address string,
+	addr string,
 	listenTimeout time.Duration,
 	readTimeout time.Duration,
 	decoder interfaces.Decoder[T],
 	handler interfaces.TCPHandler[T],
-) *Server[T] {
+) (*Server[T], error) {
+	// Use default listen timeout if not specified
 	if listenTimeout == 0 {
-		listenTimeout = 1 * time.Second
+		listenTimeout = 10 * time.Second
+	} else if listenTimeout < 0 {
+		return nil, fmt.Errorf("invalid listen timeout")
 	}
 
+	// Use default read timeout if not specified
 	if readTimeout == 0 {
-		readTimeout = 1 * time.Second
+		readTimeout = 3 * time.Second
+	} else if readTimeout < 0 {
+		return nil, fmt.Errorf("invalid read timeout")
 	}
 
 	return &Server[T]{
-		address:       address,
+		addr:          addr,
 		listenTimeout: listenTimeout,
 		readTimeout:   readTimeout,
 		decoder:       decoder,
 		handler:       handler,
 		stopChan:      make(chan struct{}),
-	}
+	}, nil
 }
 
-// Start begins listening for incoming connections
+// Start begins the TCP server and listens for incoming connections.
+// It resolves the server address, creates a TCP listener, and launches the accept loop in a goroutine.
+// Returns an error if the server is already running or if address binding fails.
 func (s *Server[T]) Start() error {
 	s.mu.Lock()
+
+	// Prevent multiple Start calls on the same server instance
 	if s.running {
 		s.mu.Unlock()
 		return fmt.Errorf("server already running")
 	}
 
-	addr, err := net.ResolveTCPAddr("tcp", s.address)
+	// Resolve the server address (e.g., "localhost:8080")
+	tcpAddr, err := net.ResolveTCPAddr("tcp", s.addr)
 	if err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("failed to resolve address: %w", err)
 	}
 
-	listener, err := net.ListenTCP("tcp", addr)
+	// Create a TCP listener bound to the resolved address
+	listener, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("failed to start listener: %w", err)
@@ -86,145 +92,156 @@ func (s *Server[T]) Start() error {
 	s.running = true
 	s.mu.Unlock()
 
+	// Launch the accept loop as a separate goroutine
 	s.wg.Add(1)
 	go s.acceptLoop()
 
 	return nil
 }
 
-// acceptLoop continuously accepts new client connections
+// acceptLoop continuously accepts new client connections in a loop.
+// It respects the stop signal and handles timeouts gracefully.
+// Each accepted connection is handled in a separate goroutine.
 func (s *Server[T]) acceptLoop() {
 	defer s.wg.Done()
 
 	for {
 		select {
 		case <-s.stopChan:
+			// Exit on shutdown signal
 			return
 		default:
-		}
+			// Set a deadline on the listener to allow periodic checks of the stop signal
+			s.mu.Lock()
+			listenTimeout := s.listenTimeout
+			s.mu.Unlock()
 
-		// Set listen deadline
-		s.mu.Lock()
-		listenTimeout := s.listenTimeout
-		s.mu.Unlock()
-		s.listener.SetDeadline(time.Now().Add(listenTimeout))
+			s.listener.SetDeadline(time.Now().Add(listenTimeout))
 
-		conn, err := s.listener.AcceptTCP()
-		if err != nil {
-			select {
-			case <-s.stopChan:
-				return
-			default:
+			// Accept a new TCP connection
+			conn, err := s.listener.AcceptTCP()
+			if err != nil {
+				select {
+				case <-s.stopChan:
+					// Server is shutting down; exit cleanly
+					return
+				default:
+					// Handle timeout errors (expected when deadline expires)
+					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+						continue
+					}
+
+					// Log unexpected errors but continue accepting
+					log.Printf("accept error: %v", err)
+					continue
+				}
 			}
 
-			// Expected error
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue
-			}
-
-			log.Printf("[TCP Server] Accept error: %v", err)
-			continue
+			// Handle the new connection in a goroutine to continue accepting new connections
+			s.wg.Add(1)
+			go s.handleConnection(conn)
 		}
-
-		s.wg.Add(1)
-		go s.handleConnection(conn)
 	}
 }
 
-// handleConnection manages a single client connection
+// handleConnection manages a single client connection for the lifetime of the connection.
+// It reads length-prefixed packets, deserializes them, and passes them to the handler.
+// The connection is closed when the client disconnects, an error occurs or the server shuts down.
 func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 	defer s.wg.Done()
+
+	// Ensure the connection is closed even if a panic occurs
 	defer func() {
 		conn.Close()
 	}()
 
 	for {
-
 		select {
 		case <-s.stopChan:
+			// Server is shutting down; close this connection
 			return
 		default:
-		}
+			// Set a deadline for reading; this allows checking the stop signal periodically
+			s.mu.Lock()
+			readTimeout := s.readTimeout
+			s.mu.Unlock()
 
-		// Set read deadline
-		s.mu.Lock()
-		readTimeout := s.readTimeout
-		s.mu.Unlock()
-		conn.SetReadDeadline(time.Now().Add(readTimeout))
+			conn.SetReadDeadline(time.Now().Add(readTimeout))
 
-		// Read the length prefix (4 bytes)
-		lengthBuf := make([]byte, 4)
-		_, err := io.ReadFull(conn, lengthBuf)
-		if err != nil {
+			// Read the length prefix (first 4 bytes in big-endian format)
+			lengthBuf := make([]byte, 4)
+			_, err := io.ReadFull(conn, lengthBuf)
+			if err != nil {
 
-			if err == io.EOF {
-				log.Printf("[TCP Server] Client disconnected: %s", conn.RemoteAddr())
+				// Timeout is expected when no data arrives within the deadline
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
+
+				// Client closed the connection gracefully
+				if err == io.EOF {
+					log.Printf("client disconnected: %s", conn.RemoteAddr())
+				} else {
+					// Log other errors
+					log.Printf("error reading payload length prefix: %v", err)
+				}
+
 				return
 			}
 
-			// Expected error
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue
+			// Decode the 4-byte length prefix to get the payload size
+			payloadLength := binary.BigEndian.Uint32(lengthBuf)
+
+			// Allocate buffer for the payload (doesn't include the 4-byte length prefix)
+			payload := make([]byte, payloadLength)
+
+			// Read the remaining packet data after the length prefix
+			_, err = io.ReadFull(conn, payload)
+			if err != nil {
+				log.Printf("error reading packet payload: %v", err)
+				return
 			}
 
-			log.Printf("[TCP Server] Error reading packet length prefix: %v", err)
-			return
-		}
+			// Deserialize the payload using the configured decoder
+			data, err := s.decoder(payload)
+			if err != nil {
+				log.Printf("deserialization error: %v", err)
+				return
+			}
 
-		// Parse packet length
-		packetLength := binary.BigEndian.Uint32(lengthBuf)
-		fmt.Printf("Packet length: %d\n", packetLength)
-
-		// Sanity checks
-		if packetLength > 10*1024 {
-			log.Printf("[TCP Server] Packet too large: %d bytes", packetLength)
-			return
-		}
-		if packetLength < 4 {
-			log.Printf("[TCP Server] Packet too small: %d bytes", packetLength)
-			return
-		}
-
-		// Read the full packet
-		packet := make([]byte, packetLength)
-		copy(packet[:4], lengthBuf)
-
-		_, err = io.ReadFull(conn, packet[4:])
-		if err != nil {
-			log.Printf("[TCP Server] Error reading packet payload: %v", err)
-			return
-		}
-
-		// Deserialize the packet
-		data, err := s.decoder(packet)
-		if err != nil {
-			log.Printf("[TCP Server] Deserialization error: %v", err)
-			return
-		}
-
-		// Call handler with deserialized data
-		if err := s.handler(data); err != nil {
-			log.Printf("[TCP Server] Handler error: %v", err)
-			return
+			// Process the deserialized data with the handler
+			if err := s.handler(data); err != nil {
+				log.Printf("handler error: %v", err)
+				return
+			}
 		}
 	}
 }
 
-// Stop gracefully shuts down the server
-func (s *Server[T]) Stop() {
+// Stop gracefully shuts down the server by signaling all goroutines to exit,
+// closing the listener, and waiting for all goroutines to complete.
+// Returns an error if the server is not running.
+func (s *Server[T]) Stop() error {
 	s.mu.Lock()
+
 	if !s.running {
 		s.mu.Unlock()
-		return
+		return fmt.Errorf("server not running")
 	}
-	s.running = false
-	s.mu.Unlock()
 
+	// Signal all goroutines to stop
 	close(s.stopChan)
 
+	// Close the listener to prevent accepting new connections
 	if s.listener != nil {
 		s.listener.Close()
 	}
 
+	s.running = false
+	s.mu.Unlock()
+
+	// Wait for all goroutines (acceptLoop and handleConnection calls) to finish
 	s.wg.Wait()
+
+	return nil
 }

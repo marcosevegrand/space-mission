@@ -1,0 +1,30 @@
+package logging
+
+import (
+	"fmt"
+	"os"
+	"time"
+)
+
+type LogFile struct {
+	file *os.File
+}
+
+func NewLogFile(filename string) (*LogFile, error) {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &LogFile{file: file}, nil
+}
+
+func (l *LogFile) Close() error {
+	return l.file.Close()
+}
+
+// Write a string to log with date/time prefix
+func (l *LogFile) Write(message string) error {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err := fmt.Fprintf(l.file, "%s | %s\n", timestamp, message)
+	return err
+}

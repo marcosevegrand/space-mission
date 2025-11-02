@@ -9,28 +9,6 @@ import (
 	"space-mission/pkg/models"
 )
 
-const (
-	// Field sizes in bytes
-	TelemetryLengthPrefixSize     = 4  // uint32
-	TelemetryRoverIDSize          = 2  // uint16
-	TelemetryPositionSize         = 12 // 3 * float32
-	TelemetryOperationalStateSize = 1  // uint8
-	TelemetryBatteryLevelSize     = 4  // float32
-	TelemetryVelocitySize         = 8  // 2 * float32
-	TelemetryTemperatureSize      = 4  // float32
-	TelemetryHealthStatusSize     = 1  // uint8
-	TelemetrySystemHealthSize     = 5  // 5 * uint8 (5 health statuses)
-	TelemetryTimestampSize        = 8  // time.Time
-
-	// Total payload size (without length prefix)
-	TelemetryPayloadSize = TelemetryRoverIDSize + TelemetryPositionSize +
-		TelemetryOperationalStateSize + TelemetryBatteryLevelSize + TelemetryVelocitySize +
-		TelemetryTemperatureSize + TelemetrySystemHealthSize + TelemetryTimestampSize
-
-	// Total packet size including length prefix
-	TelemetryPacketSize = TelemetryLengthPrefixSize + TelemetryPayloadSize
-)
-
 // TelemetryCodec handles serialization and deserialization of Telemetry packets
 type TelemetryCodec struct{}
 
@@ -43,12 +21,6 @@ func NewTelemetryCodec() *TelemetryCodec {
 // The packet includes a length prefix for proper TCP framing
 func (c *TelemetryCodec) Serialize(t models.Telemetry) ([]byte, error) {
 	buf := new(bytes.Buffer)
-
-	// Write length prefix (total packet size)
-	packetSize := uint32(TelemetryPacketSize)
-	if err := binary.Write(buf, binary.BigEndian, packetSize); err != nil {
-		return nil, fmt.Errorf("failed to write packet size: %w", err)
-	}
 
 	// Write RoverID (uint16)
 	if err := binary.Write(buf, binary.BigEndian, t.RoverID); err != nil {
@@ -96,21 +68,9 @@ func (c *TelemetryCodec) Serialize(t models.Telemetry) ([]byte, error) {
 
 // Deserialize converts a binary packet back into a Telemetry struct
 func (c *TelemetryCodec) Deserialize(data []byte) (models.Telemetry, error) {
-	if len(data) < TelemetryPacketSize {
-		return models.Telemetry{}, ErrPacketTooShort
-	}
 
 	reader := bytes.NewReader(data)
 	var telemetry models.Telemetry
-
-	// Read and validate length prefix
-	var packetSize uint32
-	if err := binary.Read(reader, binary.BigEndian, &packetSize); err != nil {
-		return models.Telemetry{}, fmt.Errorf("failed to read packet size: %w", err)
-	}
-	if packetSize != uint32(TelemetryPacketSize) {
-		return models.Telemetry{}, ErrInvalidPacketSize
-	}
 
 	// Read RoverID (uint16)
 	if err := binary.Read(reader, binary.BigEndian, &telemetry.RoverID); err != nil {
@@ -155,9 +115,4 @@ func (c *TelemetryCodec) Deserialize(data []byte) (models.Telemetry, error) {
 	telemetry.Timestamp = time.Unix(0, timestampNano)
 
 	return telemetry, nil
-}
-
-// GetPacketSize returns the expected size of a telemetry packet
-func (c *TelemetryCodec) GetPacketSize() int {
-	return TelemetryPacketSize
 }

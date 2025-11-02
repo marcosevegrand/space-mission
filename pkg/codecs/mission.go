@@ -17,36 +17,6 @@ const (
 
 	// Header field sizes
 	MessageTypeSize = 1 // uint8
-
-	// MissionRequest field sizes
-	MissionRequestRoverIDSize   = 2 // uint16
-	MissionRequestTimestampSize = 8 // int64
-
-	// MissionAssignment field sizes
-	MissionAssignmentRoverIDSize        = 2 // uint16
-	MissionAssignmentMaxDurationSize    = 8 // int64
-	MissionAssignmentUpdateIntervalSize = 8 // int64
-	MissionAssignmentTimestampSize      = 8 // int64
-
-	// ProgressUpdate field sizes
-	ProgressUpdateRoverIDSize       = 2 // uint16
-	ProgressUpdateMissionIDSize     = 2 // uint16
-	ProgressUpdateStatusSize        = 1 // uint8
-	ProgressUpdateProgressSize      = 4 // float32
-	ProgressUpdateContentLengthSize = 2 // uint16
-	ProgressUpdateTimestampSize     = 8 // int64
-
-	// Mission field sizes
-	MissionIDSize       = 2 // uint16
-	MissionTaskSize     = 1 // uint8
-	MissionStatusSize   = 1 // uint8
-	MissionProgressSize = 4 // float32
-
-	// GeographicArea field sizes
-	ShapeSize = 1 // uint8
-
-	// Coordinate sizes
-	FloatSize = 4 // float32
 )
 
 // MissionCodec handles serialization and deserialization of MissionLink messages
