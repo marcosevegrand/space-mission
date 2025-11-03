@@ -23,11 +23,11 @@ func main() {
 			Y: 0,
 		},
 		Velocity: models.Velocity{
-			Speed:     1.5,  // m/s
-			Direction: 30.0, // graus (NE)
+			Speed:     2,     // m/s
+			Direction: 180.0, // graus (NE)
 		},
 		BatteryLevel:     15.0,
-		OperationalState: models.StateMoving,
+		OperationalState: models.StateOnMission,
 	}
 
 	var mu sync.Mutex
@@ -38,7 +38,7 @@ func main() {
 	}()
 
 	// Deixar correr por 15 segundos
-	time.Sleep(15 * time.Second)
+	time.Sleep(500 * time.Second)
 	cancel() // parar simulação
 
 	// Esperar pequeno tempo para logs finais aparecerem

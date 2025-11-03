@@ -18,7 +18,7 @@ func ConsumeBattery(current float32, rate float32, dt time.Duration) float32 {
 
 // ChargeBattery increases battery based on rate (%/s)
 func ChargeBattery(current float32, rate float32, dt time.Duration) float32 {
-	charge := rate * float32(dt.Seconds())
+	charge := rate * float32(dt.Seconds()) * 10
 	newLevel := current + charge
 	if newLevel > 100 {
 		newLevel = 100
@@ -30,7 +30,7 @@ func ChargeBattery(current float32, rate float32, dt time.Duration) float32 {
 func GetConsumptionRate(state models.OperationalState) float32 {
 	switch state {
 	case models.StateIdle:
-		return 1.0 // 1%/s power on stoped
+		return 0.1 // 1%/s power on stoped
 	case models.StateMoving:
 		return 2.0 // 2%/s moving
 	case models.StateOnMission:
@@ -38,7 +38,7 @@ func GetConsumptionRate(state models.OperationalState) float32 {
 	case models.StateError:
 		return 0.1
 	default:
-		return 0.5
+		return 0.1
 	}
 }
 
@@ -56,7 +56,18 @@ func SimulateBattery(rover *models.RoverInfo, now time.Time, env EnvironmentalDa
 	drainRate := GetConsumptionRate(rover.OperationalState)
 	rover.BatteryLevel = ConsumeBattery(rover.BatteryLevel, drainRate, dt)
 
+	// Update power system health based on current battery level
+	switch {
+	case rover.BatteryLevel >= 80:
+		rover.SystemHealth.PowerSystem = models.HealthOK
+	case rover.BatteryLevel >= 20:
+		rover.SystemHealth.PowerSystem = models.HealthWarning
+	default:
+		rover.SystemHealth.PowerSystem = models.HealthCritical
+	}
+
 	chargeRate := GetSolarChargeRate(sunlight)
+
 	if chargeRate > 0 && rover.OperationalState != models.StateError {
 		prev := rover.BatteryLevel
 		rover.BatteryLevel = ChargeBattery(rover.BatteryLevel, chargeRate, dt)
@@ -66,13 +77,33 @@ func SimulateBattery(rover *models.RoverInfo, now time.Time, env EnvironmentalDa
 		}
 	}
 
-	if rover.BatteryLevel < 10 {
+	prevState := rover.OperationalState
 
-	if rover.BatteryLevel <= 0 {
-		rover.OperationalState = models.StateError
+	// Respond to critical/low battery levels with state changes and logs
+	switch {
+	case rover.BatteryLevel <= 0:
+		rover.OperationalState = models.StateIdle
 		rover.Velocity.Speed = 0
 		log.Printf("🔋 %d battery depleted (0%%). Shutting down...", rover.RoverID)
-	} else if rover.BatteryLevel < 20 {
+	case rover.BatteryLevel < 10:
+		// Emergency conserve: force idle and stop movement
+		if rover.OperationalState != models.StateError {
+			if rover.OperationalState == models.StateOnMission {
+				log.Printf("⏸️ %d pausing mission due to low battery", rover.RoverID)
+			}
+			rover.OperationalState = models.StateIdle
+			rover.Velocity.Speed = 0
+		}
+		log.Printf("❗ %d critical battery: %.2f%% — entering idle to conserve power", rover.RoverID, rover.BatteryLevel)
+	case rover.BatteryLevel >= 50:
+		switch prevState {
+		case models.StateIdle:
+			log.Printf("🔋 %d battery recovered (%.2f%%): resuming normal operations",
+				rover.RoverID, rover.BatteryLevel)
+			rover.OperationalState = models.StateOnMission
+			rover.Velocity.Speed = 2
+		}
+	case rover.BatteryLevel < 20:
 		log.Printf("⚠️ %d low battery: %.2f%% remaining", rover.RoverID, rover.BatteryLevel)
 	}
 }
