@@ -7,7 +7,7 @@ import (
 )
 
 type Rover struct {
-	*models.Rover
+	*models.RoverInfo
 	Accel    float32 // Acceleration m/s²
 	MaxSpeed float32 // Max Speed
 }

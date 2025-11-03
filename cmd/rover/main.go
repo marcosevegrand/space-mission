@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"space-mission/pkg/codecs"
@@ -11,22 +12,29 @@ import (
 )
 
 type Rover struct {
+	roverInfo *models.RoverInfo
+	roverMu   sync.RWMutex
+
 	telemetryStream *tcp.Client[models.Telemetry]
 	missionLink     *udp.Peer[models.MissionMessage]
 }
 
-func NewRover() *Rover {
-	r := &Rover{
-		telemetryStream: tcp.NewClient[models.Telemetry](
-			":8001",
-			3*time.Second,
-			3*time.Second,
-			1*time.Second,
-			codecs.NewTelemetryCodec().Serialize,
-		),
-	}
+func NewRover() (*Rover, error) {
+	r := &Rover{}
 
-	r.missionLink = udp.NewPeer[models.MissionMessage](
+	telemetryStream, err := tcp.NewClient[models.Telemetry](
+		":8001",
+		3*time.Second,
+		3*time.Second,
+		2*time.Second,
+		codecs.NewTelemetryCodec().Serialize,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create telemetry stream: %w", err)
+	}
+	r.telemetryStream = telemetryStream
+
+	missionLink := udp.NewPeer[models.MissionMessage](
 		":9002",
 		codecs.NewMissionCodec().Serialize,
 		codecs.NewMissionCodec().Deserialize,
@@ -37,11 +45,12 @@ func NewRover() *Rover {
 		1*time.Second,
 		3,
 	)
+	r.missionLink = missionLink
 
-	return r
+	return r, nil
 }
 
-func dataSource() models.Telemetry {
+func (r *Rover) dataSource() models.Telemetry {
 	return models.Telemetry{
 		RoverID: 1,
 		Position: models.Position{
@@ -68,54 +77,32 @@ func dataSource() models.Telemetry {
 }
 
 func (r *Rover) missionHandler(data models.MissionMessage, addr string) error {
-	switch data := data.(type) {
-	case models.MissionAssignment:
-		fmt.Println("Received mission assignment:", data)
-		msg := models.ProgressUpdate{
-			RoverID:   1,
-			MissionID: data.Mission.ID,
-			Status:    models.MissionCompleted,
-			Progress:  100,
-			Content:   "Hello World!",
-			Timestamp: time.Now(),
-		}
-		_, err := r.missionLink.Send(msg, addr)
-		if err != nil {
-			return err
-		}
 
-	default:
-		fmt.Println("Unknown mission type")
-	}
+	fmt.Println("Received mission message:\n", data)
 
 	return nil
 }
 
 func main() {
 
-	var c chan bool
-
-	r := NewRover()
-	fmt.Println("[ROVER] >> rover started")
-
-	fmt.Println("[ROVER] >> starting telemetry stream")
-	r.telemetryStream.Connect()
-	fmt.Println("[ROVER] >> telemetry stream connected")
-	r.telemetryStream.SendStream(dataSource)
-	fmt.Println("[ROVER] >> telemetry stream started")
-
-	time.Sleep(time.Second)
-
-	fmt.Println("[ROVER] >> starting mission link")
-	r.missionLink.Start()
-	fmt.Println("[ROVER] >> mission link started")
-
-	msg := models.MissionRequest{
-		RoverID:   1,
-		Timestamp: time.Now(),
+	r, err := NewRover()
+	if err != nil {
+		fmt.Println("Failed to create rover:", err)
+		return
 	}
-	r.missionLink.Send(msg, ":9001")
 
-	wait := <-c
-	fmt.Println("Wait:", wait)
+	r.telemetryStream.Connect()
+	r.telemetryStream.StartStream(r.dataSource)
+	r.missionLink.Start()
+
+	for {
+		time.Sleep(3 * time.Second)
+		_, err := r.missionLink.Send(models.MissionRequest{
+			RoverID:   1,
+			Timestamp: time.Now(),
+		}, ":9001")
+		if err != nil {
+			fmt.Println("Failed to send mission request:", err)
+		}
+	}
 }

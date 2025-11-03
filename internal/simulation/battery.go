@@ -50,7 +50,7 @@ func GetSolarChargeRate(sunlight float32) float32 {
 	return 0.2 * sunlight
 }
 
-func SimulateBattery(rover *models.Rover, now time.Time, env EnvironmentalData, dt time.Duration) {
+func SimulateBattery(rover *models.RoverInfo, now time.Time, env EnvironmentalData, dt time.Duration) {
 	sunlight := IsSunlightAvailable(now, env)
 
 	drainRate := GetConsumptionRate(rover.OperationalState)
@@ -61,7 +61,7 @@ func SimulateBattery(rover *models.Rover, now time.Time, env EnvironmentalData, 
 		prev := rover.BatteryLevel
 		rover.BatteryLevel = ChargeBattery(rover.BatteryLevel, chargeRate, dt)
 		if rover.BatteryLevel > prev {
-			log.Printf("☀️ %s charging: +%.2f%% (Battery=%.2f%%, Sunlight=%.0f%%)",
+			log.Printf("☀️ %d charging: +%.2f%% (Battery=%.2f%%, Sunlight=%.0f%%)",
 				rover.RoverID, rover.BatteryLevel-prev, rover.BatteryLevel, sunlight*100)
 		}
 	}
@@ -69,8 +69,8 @@ func SimulateBattery(rover *models.Rover, now time.Time, env EnvironmentalData, 
 	if rover.BatteryLevel <= 0 {
 		rover.OperationalState = models.StateError
 		rover.Velocity.Speed = 0
-		log.Printf("🔋 %s battery depleted (0%%). Shutting down...", rover.RoverID)
+		log.Printf("🔋 %d battery depleted (0%%). Shutting down...", rover.RoverID)
 	} else if rover.BatteryLevel < 20 {
-		log.Printf("⚠️ %s low battery: %.2f%% remaining", rover.RoverID, rover.BatteryLevel)
+		log.Printf("⚠️ %d low battery: %.2f%% remaining", rover.RoverID, rover.BatteryLevel)
 	}
 }

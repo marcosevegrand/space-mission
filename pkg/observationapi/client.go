@@ -17,8 +17,8 @@ type APIRoverSummary struct {
 }
 
 type APIClient struct {
-    baseURL    string
-    httpClient *http.Client
+	baseURL    string
+	httpClient *http.Client
 }
 
 // func (c *APIClient) GetSystemStatus() (*APISystemStatus, error) {
