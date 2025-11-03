@@ -66,6 +66,8 @@ func SimulateBattery(rover *models.RoverInfo, now time.Time, env EnvironmentalDa
 		}
 	}
 
+	if rover.BatteryLevel < 10 {
+
 	if rover.BatteryLevel <= 0 {
 		rover.OperationalState = models.StateError
 		rover.Velocity.Speed = 0
