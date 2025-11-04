@@ -82,6 +82,22 @@ func main() {
 	m.telememetryStream.Start()
 	m.missionLink.Start()
 
+	m.memory.StoreMission(
+		&models.Mission{
+			ID:   10,
+			Task: models.TaskEnvironmentalMonitoring,
+			GeographicArea: models.GeographicArea{
+				Shape: models.ShapeCircle,
+				Coordinates: models.CoordsCircle{
+					Center: [2]float32{1, 2},
+					Radius: 5,
+				},
+			},
+			Status:   models.MissionInProgress,
+			Progress: 10,
+		},
+	)
+
 	api := observationapi.NewObservationAPI(m.memory)
 
 	http.HandleFunc("/rovers", api.ListActiveRovers)
@@ -90,6 +106,7 @@ func main() {
 	http.HandleFunc("/mission", api.GetMission)
 	http.HandleFunc("/rover", api.GetRoverInfo)
 	http.HandleFunc("/rover/missions", api.ListRoverMissions)
+	http.HandleFunc("/rover/telemetry", api.GetTelemetry)
 
 	go func() {
 		log.Println("HTTP server listening on :8080")

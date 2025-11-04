@@ -103,3 +103,27 @@ func (o *ObservationAPI) ListRoverMissions(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(missions)
 }
+
+// GetTelemetry retorna a última telemetria para um dado rover pelo ID via HTTP
+func (o *ObservationAPI) GetTelemetry(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("roverId")
+	if idStr == "" {
+		http.Error(w, "roverId parameter required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 16)
+	if err != nil {
+		http.Error(w, "invalid roverId parameter", http.StatusBadRequest)
+		return
+	}
+
+	telemetry, exists := o.store.GetLatestTelemetry(uint16(id))
+	if !exists {
+		http.Error(w, "telemetry not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(telemetry)
+}
