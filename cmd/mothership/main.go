@@ -3,9 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
 	"time"
 
 	"space-mission/internal/memory"
+	"space-mission/internal/observationapi"
 	"space-mission/pkg/codecs"
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcp"
@@ -78,6 +81,23 @@ func main() {
 
 	m.telememetryStream.Start()
 	m.missionLink.Start()
+
+	api := observationapi.NewObservationAPI(m.memory)
+
+	http.HandleFunc("/rovers", api.ListActiveRovers)
+	http.HandleFunc("/missions", api.ListMissions)
+	http.HandleFunc("/missions/active", api.ListActiveMissions)
+	http.HandleFunc("/mission", api.GetMission)
+	http.HandleFunc("/rover", api.GetRoverInfo)
+	http.HandleFunc("/rover/missions", api.ListRoverMissions)
+
+	go func() {
+		log.Println("HTTP server listening on :8080")
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			log.Fatalf("HTTP server failed: %v", err)
+		}
+	}()
 
 	for {
 		time.Sleep(3 * time.Second)

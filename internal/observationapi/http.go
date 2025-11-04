@@ -1,4 +1,4 @@
-package api
+package observationapi
 
 import (
 	"encoding/json"
@@ -8,31 +8,37 @@ import (
 	"space-mission/internal/memory"
 )
 
-var store *memory.MemoryStore // assume que esta variável é inicializada em outro lugar
+type ObservationAPI struct {
+	store *memory.MemoryStore
+}
+
+func NewObservationAPI(store *memory.MemoryStore) *ObservationAPI {
+	return &ObservationAPI{store: store}
+}
 
 // ListActiveRovers retorna todos os rovers atualmente armazenados
-func ListActiveRovers(w http.ResponseWriter, r *http.Request) {
-	rovers := store.ListRovers()
+func (o *ObservationAPI) ListActiveRovers(w http.ResponseWriter, r *http.Request) {
+	rovers := o.store.ListRovers()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rovers)
 }
 
 // ListMissions retorna todas as missões (ativas e concluídas)
-func ListMissions(w http.ResponseWriter, r *http.Request) {
-	missions := store.ListMissions()
+func (o *ObservationAPI) ListMissions(w http.ResponseWriter, r *http.Request) {
+	missions := o.store.ListMissions()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(missions)
 }
 
 // ListActiveMissions retorna as missões que não foram concluídas
-func ListActiveMissions(w http.ResponseWriter, r *http.Request) {
-	missions := store.ListActiveMissions()
+func (o *ObservationAPI) ListActiveMissions(w http.ResponseWriter, r *http.Request) {
+	missions := o.store.ListActiveMissions()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(missions)
 }
 
 // GetMission retorna detalhes de uma missão específica, por ID
-func GetMission(w http.ResponseWriter, r *http.Request) {
+func (o *ObservationAPI) GetMission(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
 		http.Error(w, "id parameter required", http.StatusBadRequest)
@@ -45,7 +51,7 @@ func GetMission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mission, exists := store.GetMission(uint16(id))
+	mission, exists := o.store.GetMission(uint16(id))
 	if !exists {
 		http.Error(w, "mission not found", http.StatusNotFound)
 		return
@@ -56,7 +62,7 @@ func GetMission(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetRoverInfo retorna informações detalhadas do rover pelo ID
-func GetRoverInfo(w http.ResponseWriter, r *http.Request) {
+func (o *ObservationAPI) GetRoverInfo(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
 		http.Error(w, "id parameter required", http.StatusBadRequest)
@@ -69,7 +75,7 @@ func GetRoverInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roverInfo, exists := store.GetRoverInfo(uint16(id))
+	roverInfo, exists := o.store.GetRoverInfo(uint16(id))
 	if !exists {
 		http.Error(w, "rover info not found", http.StatusNotFound)
 		return
@@ -80,7 +86,7 @@ func GetRoverInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListRoverMissions retorna histórico de missões de um rover específico
-func ListRoverMissions(w http.ResponseWriter, r *http.Request) {
+func (o *ObservationAPI) ListRoverMissions(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("roverId")
 	if idStr == "" {
 		http.Error(w, "roverId parameter required", http.StatusBadRequest)
@@ -93,7 +99,7 @@ func ListRoverMissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	missions := store.GetRoverMissions(uint16(id))
+	missions := o.store.GetRoverMissions(uint16(id))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(missions)
 }
