@@ -10,6 +10,7 @@ type RoverInfo struct {
 	BatteryLevel     float32          // Current battery percentage (0–100)
 	Temperature      float32          // Internal system temperature (°C)
 	SystemHealth     SystemHealth     // Health status of all major subsystems
+	Mission          Mission          // Current mission details
 	LastUpdate       time.Time        // Timestamp of last telemetry update
 }
 
