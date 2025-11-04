@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const baseVelocity = 2.0
+
 // UpdateRoverPosition updates the rover's position based on its current velocity and the elapsed time.
 func UpdateRoverPosition(rover *models.RoverInfo, deltaTime time.Duration) {
 	seconds := deltaTime.Seconds()

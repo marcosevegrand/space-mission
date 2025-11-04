@@ -17,6 +17,11 @@ type Rover struct {
 
 	telemetryStream *tcp.Client[models.Telemetry]
 	missionLink     *udp.Peer[models.MissionMessage]
+
+	// buffer for storing strings (variable size)
+	msgMu  sync.Mutex
+	msgBuf []string
+	maxBuf int // 0 means unlimited
 }
 
 func NewRover() (*Rover, error) {

@@ -101,7 +101,7 @@ func SimulateBattery(rover *models.RoverInfo, now time.Time, env EnvironmentalDa
 			log.Printf("🔋 %d battery recovered (%.2f%%): resuming normal operations",
 				rover.RoverID, rover.BatteryLevel)
 			rover.OperationalState = models.StateOnMission
-			rover.Velocity.Speed = 2
+			rover.Velocity.Speed = baseVelocity
 		}
 	case rover.BatteryLevel < 20:
 		log.Printf("⚠️ %d low battery: %.2f%% remaining", rover.RoverID, rover.BatteryLevel)
