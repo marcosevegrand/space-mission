@@ -10,10 +10,10 @@ import (
 // MemoryStore é um armazenamento em memória thread-safe para missões, telemetrias, infos de rovers e histórico.
 type MemoryStore struct {
 	mu            sync.RWMutex
-	missions      map[uint16]*models.Mission   // Missões ativas indexadas pelo ID
-	telemetry     map[uint16]models.Telemetry  // Última telemetria por rover
-	roverMissions map[uint16][]*models.Mission // Histórico de missões por rover
-	rovers        map[uint16]*models.RoverInfo // Informação dos rovers indexada pelo ID do rover
+	missions      map[uint16]*models.Mission
+	telemetry     map[uint16]models.Telemetry
+	roverMissions map[uint16][]*models.Mission
+	rovers        map[uint16]*models.RoverInfo
 }
 
 // NewMemoryStore cria e inicializa uma nova instância de MemoryStore.

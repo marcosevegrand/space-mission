@@ -22,6 +22,10 @@ type Rover struct {
 	missionLink     *udp.Peer[models.MissionMessage]
 
 	stopChan chan struct{}
+	// buffer for storing strings (variable size)
+	msgMu  sync.Mutex
+	msgBuf []string
+	maxBuf int // 0 means unlimited
 }
 
 func NewRover() (*Rover, error) {
