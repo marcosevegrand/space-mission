@@ -6,27 +6,90 @@ import (
 	"time"
 )
 
-func RoverDoMission(RoverInfo *models.RoverInfo, deltaT time.Duration) {
-	// TODO: obtain assigned mission (e.g. from store) and use the helper below:
-	if !RoverIsInArea(RoverInfo, RoverInfo.Mission.GeographicArea) {
-		// Move towards the mission area (simple logic for demonstration)
-		targetX := (RoverInfo.Mission.GeographicArea.Coordinates.(models.CoordsRectangle).TopLeft[0] +
-			RoverInfo.Mission.GeographicArea.Coordinates.(models.CoordsRectangle).BottomRight[0]) / 2
-		targetY := (RoverInfo.Mission.GeographicArea.Coordinates.(models.CoordsRectangle).TopLeft[1] +
-			RoverInfo.Mission.GeographicArea.Coordinates.(models.CoordsRectangle).BottomRight[1]) / 2
+func RoverGoToMission(RoverInfo *models.RoverInfo, deltaT time.Duration) {
+	if RoverInfo == nil {
+		return
+	}
 
-		dx := float64(targetX - RoverInfo.Position.X)
-		dy := float64(targetY - RoverInfo.Position.Y)
-		angle := math.Atan2(dy, dx) * (180.0 / math.Pi)
-		RoverInfo.Velocity.Direction = float32(angle)
-		RoverInfo.Velocity.Speed = baseVelocity
+	area := RoverInfo.Mission.GeographicArea
 
-		UpdateRoverPosition(RoverInfo, deltaT)
-		// Check if the rover has reached the mission area
-		if RoverIsInArea(RoverInfo, RoverInfo.Mission.GeographicArea) {
-			RoverInfo.Velocity.Speed = 0
-			// Start mission tasks here (not implemented)
+	// only handle rectangle movement here (safe type check)
+	MoveToArea(RoverInfo, area, deltaT)
+}
+
+func MoveToArea(RoverInfo *models.RoverInfo, area models.GeographicArea, deltaT time.Duration) {
+	switch area.Shape {
+	case models.ShapeRectangle:
+		if rect, ok := area.Coordinates.(models.CoordsRectangle); ok {
+			if !RoverIsInArea(RoverInfo, area) {
+				// Move towards the center of the rectangle
+				targetX := (rect.TopLeft[0] + rect.BottomRight[0]) / 2
+				targetY := (rect.TopLeft[1] + rect.BottomRight[1]) / 2
+
+				dx := float64(targetX - RoverInfo.Position.X)
+				dy := float64(targetY - RoverInfo.Position.Y)
+				angle := math.Atan2(dy, dx) * (180.0 / math.Pi)
+
+				RoverInfo.Velocity.Direction = float32(angle)
+				RoverInfo.Velocity.Speed = baseVelocity
+
+				UpdateRoverPosition(RoverInfo, deltaT)
+
+				// Check if the rover has reached the mission area
+				if RoverIsInArea(RoverInfo, area) {
+					RoverInfo.Velocity.Speed = 0
+				}
+			}
 		}
+	case models.ShapeCircle:
+		if circle, ok := area.Coordinates.(models.CoordsCircle); ok {
+			if !RoverIsInArea(RoverInfo, area) {
+				// Move towards the center of the circle
+				dx := float64(circle.Center[0] - RoverInfo.Position.X)
+				dy := float64(circle.Center[1] - RoverInfo.Position.Y)
+				angle := math.Atan2(dy, dx) * (180.0 / math.Pi)
+
+				RoverInfo.Velocity.Direction = float32(angle)
+				RoverInfo.Velocity.Speed = baseVelocity
+				UpdateRoverPosition(RoverInfo, deltaT)
+
+				// Check if the rover has reached the mission area
+				if RoverIsInArea(RoverInfo, area) {
+					RoverInfo.Velocity.Speed = 0
+				}
+			}
+		}
+	default:
+		// unknown shape, no-op
+	}
+}
+
+func RoverDoMission(RoverInfo *models.RoverInfo, deltaT time.Duration) {
+	if RoverInfo == nil {
+		return
+	}
+
+	// ensure mission status reflects activity
+	if RoverInfo.Mission.Status == models.MissionPending {
+		RoverInfo.Mission.Status = models.MissionInProgress
+	}
+
+	switch RoverInfo.Mission.Task {
+	case models.TaskSampleCollection:
+		// Simulate sample collection by progressing over a fixed duration
+		timeRequired := 10 * time.Second
+		if RoverInfo.Mission.Progress < 100 {
+			frac := float32(deltaT.Seconds() / timeRequired.Seconds())
+			progressIncrease := frac * 100.0
+			RoverInfo.Mission.Progress += progressIncrease
+			if RoverInfo.Mission.Progress >= 100 {
+				RoverInfo.Mission.Progress = 100
+				RoverInfo.Mission.Status = models.MissionCompleted
+			}
+		}
+	// ... other task implementations can be added here ...
+	default:
+		// no-op for unknown tasks
 	}
 }
 
