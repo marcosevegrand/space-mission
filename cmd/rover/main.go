@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -25,11 +26,11 @@ type Rover struct {
 	maxBuf int // 0 means unlimited
 }
 
-func NewRover() (*Rover, error) {
+func NewRover(tcpaddr string, udpaddr string) (*Rover, error) {
 	r := &Rover{}
 
 	telemetryStream, err := tcp.NewClient[models.Telemetry](
-		":8001",
+		tcpaddr,
 		3*time.Second,
 		3*time.Second,
 		2*time.Second,
@@ -41,7 +42,7 @@ func NewRover() (*Rover, error) {
 	r.telemetryStream = telemetryStream
 
 	missionLink, err := udp.NewPeer[models.MissionMessage](
-		":9002",
+		udpaddr,
 		"udp-log",
 		codecs.NewMissionCodec().Serialize,
 		codecs.NewMissionCodec().Deserialize,
@@ -96,7 +97,11 @@ func (r *Rover) missionHandler(data models.MissionMessage, addr string) error {
 
 func main() {
 
-	r, err := NewRover()
+	// Flags and args passed to the mothership
+	tcpAddr := flag.String("tcp", ":8001", "TCP address")
+	udpAddr := flag.String("udp", ":9001", "UDP address")
+
+	r, err := NewRover(*tcpAddr, *udpAddr)
 	if err != nil {
 		fmt.Println("Failed to create rover:", err)
 		return
