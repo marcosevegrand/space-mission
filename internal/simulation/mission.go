@@ -87,6 +87,42 @@ func RoverDoMission(RoverInfo *models.RoverInfo, deltaT time.Duration) {
 				RoverInfo.Mission.Status = models.MissionCompleted
 			}
 		}
+	case models.TaskImageCapture:
+		// Simulate photography task
+		timeRequired := 5 * time.Second
+		if RoverInfo.Mission.Progress < 100 {
+			frac := float32(deltaT.Seconds() / timeRequired.Seconds())
+			progressIncrease := frac * 100.0
+			RoverInfo.Mission.Progress += progressIncrease
+			if RoverInfo.Mission.Progress >= 100 {
+				RoverInfo.Mission.Progress = 100
+				RoverInfo.Mission.Status = models.MissionCompleted
+			}
+		}
+	case models.TaskEnvironmentalMonitoring:
+		// Simulate environmental monitoring task
+		timeRequired := 8 * time.Second
+		if RoverInfo.Mission.Progress < 100 {
+			frac := float32(deltaT.Seconds() / timeRequired.Seconds())
+			progressIncrease := frac * 100.0
+			RoverInfo.Mission.Progress += progressIncrease
+			if RoverInfo.Mission.Progress >= 100 {
+				RoverInfo.Mission.Progress = 100
+				RoverInfo.Mission.Status = models.MissionCompleted
+			}
+		}
+	case models.TaskTerrainMapping:
+		// Simulate terrain mapping task
+		timeRequired := 12 * time.Second
+		if RoverInfo.Mission.Progress < 100 {
+			frac := float32(deltaT.Seconds() / timeRequired.Seconds())
+			progressIncrease := frac * 100.0
+			RoverInfo.Mission.Progress += progressIncrease
+			if RoverInfo.Mission.Progress >= 100 {
+				RoverInfo.Mission.Progress = 100
+				RoverInfo.Mission.Status = models.MissionCompleted
+			}
+		}
 	// ... other task implementations can be added here ...
 	default:
 		// no-op for unknown tasks
