@@ -8,78 +8,132 @@ import (
 	"time"
 
 	"space-mission/pkg/interfaces"
+	"space-mission/pkg/logfile"
 )
 
-// PendingPacket represents a packet that has been sent but not yet acknowledged.
-// It stores metadata needed for retransmissions and ACK tracking.
-type PendingPacket struct {
-	SequenceNumber uint32       // Unique sequence number identifying the packet
-	Data           []byte       // Raw bytes of the packet
-	Destination    *net.UDPAddr // Address to which the packet was sent
-	SendTime       time.Time    // Timestamp of when the packet was last sent
-	RetryCount     uint16       // Number of retransmission attempts
-	AckChan        chan bool    // Channel to notify when ACK is received or failed
+// sentPacket manages sent fragments, their acknowledgment status, and per-fragment send timestamps.
+type sentPacket struct {
+	seqNum     uint32       // Unique sequence number for the packet
+	numFrags   uint16       // Total number of fragments
+	frags      [][]byte     // Fragment byte slices for sending
+	fragsAck   []bool       // Which fragments are acknowledged
+	sendTimes  []time.Time  // Per-fragment last sent timestamp
+	dest       *net.UDPAddr // Destination address
+	retryCount []uint16     // Number of total retries (across fragments)
+	pending    bool         // Whether the packet fragments are still being sent
+	ackChan    chan bool    // Channel to notify on send success or failure
 }
 
-// ReceivedPacketKey is used to uniquely identify received packets
-// for duplicate detection, based on sender address and sequence number.
-type ReceivedPacketKey struct {
-	Sender string // Address of sender as string
-	SeqNum uint32 // Sequence number of the packet received
+// receivedPacket handles fragment reassembly and tracking on the receiver side.
+type receivedPacket struct {
+	seqNum       uint32    // Sequence number of the packet
+	numFrags     uint16    // Total number of fragments
+	fragsPayload [][]byte  // Received fragments payload
+	fragsRecv    []bool    // Which fragments have been received
+	lastUpdated  time.Time // Last fragment arrival timestamp (for cleanup)
 }
 
-// Peer represents a UDP endpoint capable of sending and receiving
-// reliable packets with acknowledgments and retransmissions.
+// Composite key for receivedPackets map
+type receivedPacketKey struct {
+	sender string
+	seqNum uint32
+}
+
+// ReceivedFragKey uniquely identifies received fragments for duplicate detection
+type receivedFragKey struct {
+	sender string
+	seqNum uint32
+	fragID uint16
+}
+
+// Peer manages UDP communication with fragmentation, retransmission, acknowledgment, duplicate detection.
 type Peer[T any] struct {
-	conn *net.UDPConn // Underlying UDP connection
+	conn *net.UDPConn
+	lf   *logfile.LogFile
 
-	// Configuration and dependencies
-	addr           string                   // Local address to bind to
-	encoder        interfaces.Encoder[T]    // Encoder for outgoing payloads
-	decoder        interfaces.Decoder[T]    // Decoder for incoming payloads
-	handler        interfaces.UDPHandler[T] // Application-level handler for decoded data
-	receivedSeqTTL time.Duration            // How long to keep track of received sequence numbers (to detect duplicates)
-	readTimeout    time.Duration            // Read timeout duration for UDP socket
-	writeTimeout   time.Duration            // Write timeout duration for UDP socket
-	retxTimeout    time.Duration            // Timeout before retransmitting unacknowledged packets
-	maxRetries     uint16                   // Maximum number of retransmission attempts before giving up
+	// Configurable parameters
+	addr         string
+	encoder      interfaces.Encoder[T]
+	decoder      interfaces.Decoder[T]
+	handler      interfaces.UDPHandler[T]
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	retxTimeout  time.Duration
+	recvTTL      time.Duration
+	maxRetries   uint16
+	maxSize      uint16
+	confMu       sync.RWMutex // read heavy
 
-	// State for sequencing and retransmission
-	nextSeqNum      uint32                          // Next sequence number to use for outgoing packets
-	pendingPackets  map[uint32]*PendingPacket       // Map of packets awaiting ACK, keyed by local seqNum
-	receivedSeqNums map[ReceivedPacketKey]time.Time // Tracks received packets to detect duplicates
-	seqMu           sync.Mutex                      // Mutex protecting sequencing and map state
+	// Packet management
+	nextSeqNum uint32
+	sentPkts   map[uint32]*sentPacket                // Sent packets awaiting ACK
+	recvPkts   map[receivedPacketKey]*receivedPacket // Received packets being reassembled
+	seenFrags  map[receivedFragKey]time.Time         // Track received fragment duplicates
+	pktMu      sync.Mutex                            // write heavy
 
-	// Synchronization for goroutines and safe state changes
-	wg       sync.WaitGroup // WaitGroup to wait for goroutines to finish on shutdown
-	stopChan chan struct{}  // Channel to signal stopping all loops
-	mu       sync.Mutex     // Mutex protecting concurrent start/stop and running flag
-	running  bool           // True if the Peer is currently running
+	// State management
+	running  bool
+	stopChan chan struct{}
+	wg       sync.WaitGroup
+	mu       sync.Mutex
 }
 
-// NewPeer creates a new Peer with the specified parameters.
-// It sets up internal state but does not start network operations.
+// NewPeer constructs a new Peer.
 func NewPeer[T any](
-	addr string,
+	addr string, logFileName string,
 	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.UDPHandler[T],
-	receivedSeqTTL time.Duration, readTimeout time.Duration, writeTimeout time.Duration,
-	retxTimeout time.Duration, maxRetries uint16,
-) *Peer[T] {
-	return &Peer[T]{
-		addr:            addr,
-		encoder:         encoder,
-		decoder:         decoder,
-		handler:         handler,
-		receivedSeqTTL:  receivedSeqTTL,
-		readTimeout:     readTimeout,
-		writeTimeout:    writeTimeout,
-		retxTimeout:     retxTimeout,
-		maxRetries:      maxRetries,
-		stopChan:        make(chan struct{}),
-		pendingPackets:  make(map[uint32]*PendingPacket),
-		receivedSeqNums: make(map[ReceivedPacketKey]time.Time),
-		nextSeqNum:      1, // Start sequence numbering from 1
+	readTimeout time.Duration, writeTimeout time.Duration, retxTimeout time.Duration,
+	recvTTL time.Duration, maxRetries uint16, maxSize uint16,
+) (*Peer[T], error) {
+
+	lf, err := logfile.NewLogFile(logFileName)
+	if err != nil {
+		return nil, err
 	}
+	if readTimeout == 0 {
+		readTimeout = 3 * time.Second
+	} else if readTimeout < 0 {
+		return nil, fmt.Errorf("readTimeout must be positive")
+	}
+	if writeTimeout == 0 {
+		writeTimeout = 3 * time.Second
+	} else if writeTimeout < 0 {
+		return nil, fmt.Errorf("writeTimeout must be positive")
+	}
+	if retxTimeout == 0 {
+		retxTimeout = 3 * time.Second
+	} else if retxTimeout < 0 {
+		return nil, fmt.Errorf("retxTimeout must be positive")
+	}
+	if recvTTL == 0 {
+		recvTTL = 5 * time.Second
+	} else if recvTTL < 0 {
+		return nil, fmt.Errorf("recvSeqTTL must be positive")
+	}
+	if maxSize == 0 {
+		maxSize = 512
+	}
+
+	return &Peer[T]{
+		addr:         addr,
+		lf:           lf,
+		encoder:      encoder,
+		decoder:      decoder,
+		handler:      handler,
+		readTimeout:  readTimeout,
+		writeTimeout: writeTimeout,
+		retxTimeout:  retxTimeout,
+		recvTTL:      recvTTL,
+		maxRetries:   maxRetries,
+		maxSize:      maxSize,
+
+		nextSeqNum: 1,
+		sentPkts:   make(map[uint32]*sentPacket),
+		recvPkts:   make(map[receivedPacketKey]*receivedPacket),
+		seenFrags:  make(map[receivedFragKey]time.Time),
+
+		stopChan: make(chan struct{}),
+	}, nil
 }
 
 // Start initializes the UDP connection, sets running state, and launches goroutines
@@ -91,7 +145,7 @@ func (p *Peer[T]) Start() error {
 		return fmt.Errorf("peer already running")
 	}
 
-	// Resolve the configured address and bind UDP listener
+	// Prepare UDP listener before starting main loops
 	addr, err := net.ResolveUDPAddr("udp", p.addr)
 	if err != nil {
 		p.mu.Unlock()
@@ -107,7 +161,6 @@ func (p *Peer[T]) Start() error {
 	p.running = true
 	p.mu.Unlock()
 
-	// Launch goroutines for core loops managing incoming packets, retransmission, and cleanup
 	p.wg.Add(1)
 	go p.receiveLoop()
 
@@ -120,12 +173,12 @@ func (p *Peer[T]) Start() error {
 	return nil
 }
 
-// receiveLoop continuously reads packets from the UDP socket,
-// applies read deadlines, and dispatches packet handling.
+// receiveLoop continuously reads fragments from the UDP socket,
+// applying read deadlines, and dispatches fragment handling.
 func (p *Peer[T]) receiveLoop() {
 	defer p.wg.Done()
 
-	buffer := make([]byte, 65535) // Max UDP packet size buffer
+	buf := make([]byte, 65535) // Buffer sized for largest UDP packet
 
 	for {
 		select {
@@ -134,100 +187,170 @@ func (p *Peer[T]) receiveLoop() {
 		default:
 		}
 
-		p.mu.Lock()
-		readTimeout := p.readTimeout
-		p.mu.Unlock()
-		// Set read deadline to enable timeout checks and graceful shutdown
-		p.conn.SetReadDeadline(time.Now().Add(readTimeout))
+		p.confMu.Lock()
+		rt := p.readTimeout
+		p.confMu.Unlock()
 
-		n, addr, err := p.conn.ReadFromUDP(buffer)
+		p.conn.SetReadDeadline(time.Now().Add(rt))
+
+		n, addr, err := p.conn.ReadFromUDP(buf)
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// Timeout is expected; continue reading
-				continue
-			}
-			select {
-			case <-p.stopChan:
-				return
-			default:
-				log.Printf("[UDP] read error: %v", err)
-				continue
-			}
+			p.lf.Write("%v", err)
+			continue
 		}
 
-		// Copy the packet data for processing to avoid overwrite by next read
-		packet := make([]byte, n)
-		copy(packet, buffer[:n])
+		frag := make([]byte, n)
+		copy(frag, buf[:n])
 
-		err = p.receive(packet, addr)
+		err = p.receive(frag, addr)
 		if err != nil {
-			log.Printf("[UDP] failed to handle packet: %v", err)
-			continue
+			p.lf.Write("failed to handle fragment: %v", err)
 		}
 	}
 }
 
-// receive processes a raw UDP packet, validating checksum, handling ACKs and DATA,
-// deduplicating, decoding payloads, and dispatching to the handler.
-func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
-	packet, err := ParsePacket(rawPacket) // Parses raw bytes into structured packet
+// receive processes incoming fragments, handles ACKs, DATA, fragment reassembly, and dispatches to user handler.
+func (p *Peer[T]) receive(frag []byte, addr *net.UDPAddr) error {
+	f, err := ParseFrag(frag)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse packet: %v", err)
+	}
+
+	if !ValidateChecksum(f) {
+		return fmt.Errorf("checksum mismatch for (seqNum %d, fragID %d) from %s",
+			f.seqNum, f.fragID, addr)
+	}
+
+	if f.IsAck() {
+		return p.handleAck(f, addr)
+	}
+
+	if f.IsData() {
+		return p.handleData(f, addr)
+	}
+
+	return fmt.Errorf("unknown fragment type with flags: %d from %v", f.flags, addr)
+}
+
+func (p *Peer[T]) handleAck(f *Fragment, addr *net.UDPAddr) error {
+	p.pktMu.Lock()
+	defer p.pktMu.Unlock()
+
+	pkt, exists := p.sentPkts[f.seqNum]
+	if !exists || f.fragID >= pkt.numFrags || f.numFrags != pkt.numFrags {
+		return fmt.Errorf("received ACK of unknown packet %d from %s", f.seqNum, addr)
+	}
+
+	pkt.fragsAck[f.fragID] = true
+
+	allAck := true
+	for _, ack := range pkt.fragsAck {
+		if !ack {
+			allAck = false
+			break
+		}
+	}
+
+	if allAck {
+		select {
+		case pkt.ackChan <- true:
+		default:
+		}
+		close(pkt.ackChan)
+		delete(p.sentPkts, pkt.seqNum)
+	}
+
+	return nil
+}
+
+// sendAck constructs and sends an ACK packet for the given sequence number.
+// This confirms receipt to the sender for their retransmission logic.
+func (p *Peer[T]) sendAck(seqNum uint32, fragID uint16, numFrags uint16, addr *net.UDPAddr) error {
+	f := BuildAckFrag(seqNum, fragID, numFrags)
+
+	p.confMu.Lock()
+	wt := p.writeTimeout
+	p.confMu.Unlock()
+
+	p.conn.SetWriteDeadline(time.Now().Add(wt))
+
+	_, err := p.conn.WriteToUDP(f, addr)
+	if err != nil {
+		return fmt.Errorf("failed to send ACK: %w", err)
+	}
+
+	return nil
+}
+
+func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
+
+	err := p.sendAck(f.seqNum, f.fragID, f.numFrags, addr)
+	if err != nil {
+		p.lf.Write("failed to send ACK: %v", err)
 	}
 
 	senderAddr := addr.String()
 
-	// Verify checksum to ensure packet integrity
-	if !ValidateChecksum(packet) {
-		return fmt.Errorf("checksum mismatch for seq %d from %s", packet.SeqNum, senderAddr)
-	}
+	fragKey := receivedFragKey{sender: senderAddr, seqNum: f.seqNum, fragID: f.fragID}
 
-	if packet.IsACK() {
-		// ACK packet signals successful receipt of earlier sent packet
-		p.seqMu.Lock()
-		pending, exists := p.pendingPackets[packet.SeqNum]
-		if exists {
-			// Remove from pending and signal sender the ACK was received
-			delete(p.pendingPackets, packet.SeqNum)
-			pending.AckChan <- true
-			close(pending.AckChan)
-		}
-		p.seqMu.Unlock()
+	p.pktMu.Lock()
+
+	if _, seen := p.seenFrags[fragKey]; seen {
+		p.pktMu.Unlock()
 		return nil
 	}
 
-	if packet.IsDATA() {
-		// For data packets, send immediate ACK back to sender
-		err := p.sendACK(packet.SeqNum, addr)
+	p.seenFrags[fragKey] = time.Now()
+
+	recvKey := receivedPacketKey{sender: senderAddr, seqNum: f.seqNum}
+
+	pkt, exists := p.recvPkts[recvKey]
+	if !exists {
+		pkt = &receivedPacket{
+			seqNum:       f.seqNum,
+			numFrags:     f.numFrags,
+			fragsPayload: make([][]byte, f.numFrags),
+			fragsRecv:    make([]bool, f.numFrags),
+			lastUpdated:  time.Now(),
+		}
+		p.recvPkts[recvKey] = pkt
+	}
+
+	if f.numFrags != pkt.numFrags {
+		p.pktMu.Unlock()
+		return fmt.Errorf("total fragments mismatch: expected %d, got %d",
+			pkt.numFrags, f.numFrags)
+	}
+
+	if !pkt.fragsRecv[f.fragID] {
+		pkt.fragsPayload[f.fragID] = f.payload
+		pkt.fragsRecv[f.fragID] = true
+		pkt.lastUpdated = time.Now()
+	}
+
+	// Check completeness
+	allReceived := true
+	for _, recvd := range pkt.fragsRecv {
+		if !recvd {
+			allReceived = false
+			break
+		}
+	}
+
+	if allReceived {
+		var fullPayload []byte
+		for i := uint16(0); i < pkt.numFrags; i++ {
+			fullPayload = append(fullPayload, pkt.fragsPayload[i]...)
+		}
+
+		delete(p.recvPkts, recvKey)
+		p.pktMu.Unlock()
+
+		data, err := p.decoder(fullPayload)
 		if err != nil {
-			log.Printf("[UDP] failed to send ACK: %v", err)
+			return fmt.Errorf("failed to decode reassembled payload: %w", err)
 		}
 
-		// Use ReceivedPacketKey for duplicate detection
-		key := ReceivedPacketKey{
-			Sender: senderAddr,
-			SeqNum: packet.SeqNum,
-		}
-
-		p.seqMu.Lock()
-		_, ok := p.receivedSeqNums[key]
-		if !ok {
-			p.receivedSeqNums[key] = time.Now()
-		}
-		p.seqMu.Unlock()
-
-		// If duplicate, ignore payload processing
-		if ok {
-			return nil
-		}
-
-		// Decode payload into application-level data type
-		data, err := p.decoder(packet.Payload)
-		if err != nil {
-			return fmt.Errorf("failed to decode payload: %w", err)
-		}
-
-		// Dispatch handling asynchronously to avoid blocking
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
@@ -236,29 +359,11 @@ func (p *Peer[T]) receive(rawPacket []byte, addr *net.UDPAddr) error {
 
 		return nil
 	}
-
-	return fmt.Errorf("unknown packet type with flags: %d from %s", packet.Flags, senderAddr)
-}
-
-// sendACK constructs and sends an ACK packet for the given sequence number to the specified address.
-func (p *Peer[T]) sendACK(seqNum uint32, addr *net.UDPAddr) error {
-	packet := BuildACKPacket(seqNum)
-
-	p.mu.Lock()
-	writeTimeout := p.writeTimeout
-	p.mu.Unlock()
-
-	p.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	_, err := p.conn.WriteToUDP(packet, addr)
-	if err != nil {
-		return fmt.Errorf("failed to send ACK: %w", err)
-	}
-
+	p.pktMu.Unlock()
 	return nil
 }
 
-// Send encodes the provided data and sends it as a DATA packet to the specified address.
-// It returns a channel that will signal when an ACK is received or sending failed.
+// Send encodes and sends data fragmented per maxSize.
 func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 	p.mu.Lock()
 	if !p.running {
@@ -277,57 +382,83 @@ func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 		return nil, fmt.Errorf("failed to encode data: %w", err)
 	}
 
-	// Allocate a new sequence number for the packet, protected by mutex
-	p.seqMu.Lock()
+	p.pktMu.Lock()
 	seqNum := p.nextSeqNum
 	p.nextSeqNum++
-	p.seqMu.Unlock()
+	p.pktMu.Unlock()
 
-	packet := BuildDataPacket(seqNum, payload)
+	payloadSize := uint16(len(payload))
+	maxPayloadSize := p.maxSize - uint16(HeaderSize)
 
-	// Create a PendingPacket to track for retransmissions and ACKs
-	pending := &PendingPacket{
-		SequenceNumber: seqNum,
-		Data:           packet,
-		Destination:    addr,
-		SendTime:       time.Now(),
-		RetryCount:     0,
-		AckChan:        make(chan bool, 1), // Buffered channel for async signaling
+	var numFrags uint16
+	if payloadSize > maxPayloadSize {
+		numFrags = payloadSize / maxPayloadSize
+		if payloadSize%maxPayloadSize != 0 {
+			numFrags++
+		}
+	} else {
+		numFrags = 1
 	}
 
-	p.seqMu.Lock()
-	p.pendingPackets[seqNum] = pending
-	p.seqMu.Unlock()
-
-	err = p.sendPacket(packet, addr)
-	if err != nil {
-		// On failure, clean up and close ACK channel
-		p.seqMu.Lock()
-		delete(p.pendingPackets, seqNum)
-		close(pending.AckChan)
-		p.seqMu.Unlock()
-		return nil, fmt.Errorf("failed to send packet: %w", err)
+	pkt := &sentPacket{
+		seqNum:     seqNum,
+		numFrags:   numFrags,
+		frags:      make([][]byte, numFrags),
+		fragsAck:   make([]bool, numFrags),
+		sendTimes:  make([]time.Time, numFrags),
+		dest:       addr,
+		retryCount: make([]uint16, numFrags),
+		pending:    true,
+		ackChan:    make(chan bool, 1),
 	}
 
-	return pending.AckChan, nil
+	p.pktMu.Lock()
+	p.sentPkts[seqNum] = pkt
+	p.pktMu.Unlock()
+
+	for i := uint16(0); i < numFrags; i++ {
+		start := i * maxPayloadSize
+		end := start + maxPayloadSize
+		end = min(end, payloadSize)
+
+		f := BuildDataFrag(seqNum, i, numFrags, payload[start:end])
+		p.pktMu.Lock()
+		pkt.frags[i] = f
+		p.pktMu.Unlock()
+
+		err = p.sendPacket(f, addr)
+		if err != nil {
+			p.pktMu.Lock()
+			delete(p.sentPkts, seqNum)
+			close(pkt.ackChan)
+			p.pktMu.Unlock()
+			return nil, fmt.Errorf("failed to send packet: %w", err)
+		}
+		pkt.sendTimes[i] = time.Now()
+	}
+
+	p.pktMu.Lock()
+	p.sentPkts[seqNum].pending = false
+	p.pktMu.Unlock()
+
+	return pkt.ackChan, nil
 }
 
-// sendPacket sends raw bytes to the given UDP address, applying write timeout.
+// sendPacket wraps low-level UDP send with timeout.
 func (p *Peer[T]) sendPacket(packet []byte, addr *net.UDPAddr) error {
-	p.mu.Lock()
-	writeTimeout := p.writeTimeout
-	p.mu.Unlock()
+	p.confMu.Lock()
+	wt := p.writeTimeout
+	p.confMu.Unlock()
 
-	p.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	p.conn.SetWriteDeadline(time.Now().Add(wt))
 	_, err := p.conn.WriteToUDP(packet, addr)
 	return err
 }
 
-// retransmissionLoop periodically checks for packets that need retransmission
-// due to missing ACKs. It retransmits packets respecting max retries.
 func (p *Peer[T]) retransmissionLoop() {
 	defer p.wg.Done()
-	ticker := time.NewTicker(p.retxTimeout / 2) // Check twice per retransmission timeout
+
+	ticker := time.NewTicker(p.retxTimeout / 4)
 	defer ticker.Stop()
 
 	for {
@@ -340,68 +471,85 @@ func (p *Peer[T]) retransmissionLoop() {
 	}
 }
 
-// checkRetransmissions examines pending packets to retransmit timed-out ones or give up after max retries.
+// checkRetransmissions retransmits fragments individually based on their own send timestamps.
 func (p *Peer[T]) checkRetransmissions() {
 	now := time.Now()
 
-	p.seqMu.Lock()
-	defer p.seqMu.Unlock()
+	p.confMu.Lock()
+	rt := p.retxTimeout
+	mr := p.maxRetries
+	p.confMu.Unlock()
 
-	for seqNum, pending := range p.pendingPackets {
-		elapsed := now.Sub(pending.SendTime)
-
-		if elapsed >= p.retxTimeout {
-			if pending.RetryCount >= p.maxRetries {
-				// Max retries reached, signal failure and remove packet from pending
-				delete(p.pendingPackets, seqNum)
-				select {
-				case pending.AckChan <- false:
-				default:
+	p.pktMu.Lock()
+	for seqNum, pkt := range p.sentPkts {
+		if pkt.pending {
+			continue
+		}
+		for i, acked := range pkt.fragsAck {
+			if !acked {
+				elapsed := now.Sub(pkt.sendTimes[i])
+				if elapsed >= rt {
+					if pkt.retryCount[i] >= mr {
+						delete(p.sentPkts, seqNum)
+						select {
+						case pkt.ackChan <- false:
+						default:
+						}
+						close(pkt.ackChan)
+						break
+					}
+					frag := pkt.frags[i]
+					dest := pkt.dest
+					p.pktMu.Unlock()
+					err := p.sendPacket(frag, dest)
+					if err != nil {
+						log.Printf("Error retransmitting packet: %v", err)
+					}
+					p.pktMu.Lock()
+					pkt.sendTimes[i] = now
+					pkt.retryCount[i]++
 				}
-				close(pending.AckChan)
-				continue
 			}
-
-			// Retransmit packet
-			err := p.sendPacket(pending.Data, pending.Destination)
-			if err != nil {
-				continue // Ignore send error; will retry later
-			}
-
-			// Update send time and retry count
-			pending.SendTime = now
-			pending.RetryCount++
 		}
 	}
+	p.pktMu.Unlock()
 }
 
-// cleanupLoop periodically purges old received sequence numbers that exceed TTL,
-// preventing indefinite memory growth for duplicate detection.
+// cleanupLoop periodically cleans old received sequence data and partial packets.
 func (p *Peer[T]) cleanupLoop() {
 	defer p.wg.Done()
 
-	p.mu.Lock()
-	receivedSeqTTL := p.receivedSeqTTL
-	p.mu.Unlock()
+	p.confMu.Lock()
+	recvTTL := p.recvTTL
+	p.confMu.Unlock()
 
 	for {
 		select {
 		case <-p.stopChan:
 			return
-		case <-time.After(receivedSeqTTL / 4):
-			p.seqMu.Lock()
-			for key, timestamp := range p.receivedSeqNums {
-				if time.Since(timestamp) > receivedSeqTTL {
-					delete(p.receivedSeqNums, key)
+		case <-time.After(recvTTL / 4):
+			p.pktMu.Lock()
+			now := time.Now()
+
+			for key, ts := range p.seenFrags {
+				if now.Sub(ts) > recvTTL {
+					delete(p.seenFrags, key)
 				}
 			}
-			p.seqMu.Unlock()
+
+			for key, rPacket := range p.recvPkts {
+				if now.Sub(rPacket.lastUpdated) > recvTTL {
+					delete(p.recvPkts, key)
+				}
+			}
+
+			p.pktMu.Unlock()
 		}
 	}
 }
 
-// Stop cleanly shuts down the Peer by terminating goroutines,
-// closing the underlying UDP connection, and signaling pending packets.
+// Stop gracefully terminates network activity and goroutines, releasing resources and
+// notifying outstanding sends of failure to prevent indefinite blocking.
 func (p *Peer[T]) Stop() error {
 	p.mu.Lock()
 	if !p.running {
@@ -411,23 +559,26 @@ func (p *Peer[T]) Stop() error {
 	p.running = false
 	p.mu.Unlock()
 
-	// Signal all loop goroutines to stop
+	// Notify all loops to terminate
 	close(p.stopChan)
 
-	// Close the UDP connection to unblock reads
+	// Close underlying UDP connection to interrupt blocking operations
 	if p.conn != nil {
 		p.conn.Close()
 	}
 
-	// Signal all pending packets that sending failed
-	p.seqMu.Lock()
-	for _, pending := range p.pendingPackets {
-		pending.AckChan <- false
-		close(pending.AckChan)
+	// Signal failure for all pending packets awaiting ACKs
+	p.pktMu.Lock()
+	for _, pending := range p.sentPkts {
+		select {
+		case pending.ackChan <- false:
+		default:
+		}
+		close(pending.ackChan)
 	}
-	p.seqMu.Unlock()
+	p.pktMu.Unlock()
 
-	// Wait for all goroutines to exit gracefully
+	// Wait for all internal goroutines to clean up
 	p.wg.Wait()
 
 	return nil

@@ -1,4 +1,4 @@
-package logging
+package logfile
 
 import (
 	"fmt"
@@ -23,8 +23,8 @@ func (l *LogFile) Close() error {
 }
 
 // Write a string to log with date/time prefix
-func (l *LogFile) Write(message string) error {
+func (l *LogFile) Write(format string, args ...interface{}) error {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	_, err := fmt.Fprintf(l.file, "%s | %s\n", timestamp, message)
+	_, err := fmt.Fprintf(l.file, "%s | %s\n", timestamp, fmt.Sprintf(format, args...))
 	return err
 }

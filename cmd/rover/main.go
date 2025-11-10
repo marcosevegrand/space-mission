@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -10,8 +9,6 @@ import (
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcp"
 	"space-mission/pkg/transport/udp"
-
-	"space-mission/internal/simulation"
 )
 
 type Rover struct {
@@ -43,8 +40,9 @@ func NewRover() (*Rover, error) {
 	}
 	r.telemetryStream = telemetryStream
 
-	missionLink := udp.NewPeer[models.MissionMessage](
+	missionLink, err := udp.NewPeer[models.MissionMessage](
 		":9002",
+		"udp-log",
 		codecs.NewMissionCodec().Serialize,
 		codecs.NewMissionCodec().Deserialize,
 		r.missionHandler,
@@ -53,59 +51,14 @@ func NewRover() (*Rover, error) {
 		1*time.Second,
 		1*time.Second,
 		3,
+		512,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mission link: %w", err)
+	}
 	r.missionLink = missionLink
 
 	return r, nil
-}
-
-func (r *Rover) SimulateRover(roverInfo *models.RoverInfo, tick time.Duration) {
-	if tick <= 0 {
-		tick = 1 * time.Second
-	}
-
-	ticker := time.NewTicker(tick)
-	defer ticker.Stop()
-
-	last := time.Now()
-
-	log.Printf("▶️ Starting simulation loop for rover %d (tick=%s)", roverInfo.RoverID, tick)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("⏹ Stopping simulation for rover %d: %v", roverInfo.RoverID, ctx.Err())
-			return
-		case now := <-ticker.C:
-			// calculate dt, but protect small/zero intervals
-			dt := now.Sub(last)
-			if dt <= 0 {
-				dt = tick
-			}
-			last = now
-
-			// Generate environment snapshot
-			env := simulation.GenerateEnvironmentalData(now)
-
-			// Optional lock if caller provided one
-			if roverMu != nil {
-				roverMu.Lock()
-			}
-
-			// 1) Movement: update position using current velocity & dt
-			simulation.UpdateRoverPosition(roverInfo, dt)
-
-			// 2) Battery: simulate drain/charge using current env and time
-			simulation.SimulateBattery(roverInfo, now, env, dt)
-
-			// 3) Optional: apply any environment-driven effects on rover state (example placeholder)
-			// e.g., if strong wind might affect velocity, add logic here.
-
-			if roverMu != nil {
-				roverMu.Unlock()
-			}
-		}
-	}
 }
 
 func (r *Rover) dataSource() models.Telemetry {

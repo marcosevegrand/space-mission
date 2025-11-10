@@ -42,21 +42,21 @@ func NewClient[T any](
 	if dialTimeout == 0 {
 		dialTimeout = 10 * time.Second
 	} else if dialTimeout < 0 {
-		return nil, fmt.Errorf("invalid dial timeout")
+		return nil, fmt.Errorf("dial timeout must be positive")
 	}
 
 	// Use default write timeout if not specified
 	if writeTimeout == 0 {
 		writeTimeout = 3 * time.Second
 	} else if writeTimeout < 0 {
-		return nil, fmt.Errorf("invalid write timeout")
+		return nil, fmt.Errorf("write timeout must be positive")
 	}
 
 	// Use default call interval if not specified
 	if callInterval == 0 {
 		callInterval = 3 * time.Second
 	} else if callInterval < 0 {
-		return nil, fmt.Errorf("invalid call interval")
+		return nil, fmt.Errorf("call interval must be positive")
 	}
 
 	return &Client[T]{

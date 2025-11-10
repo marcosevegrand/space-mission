@@ -42,14 +42,14 @@ func NewServer[T any](
 	if listenTimeout == 0 {
 		listenTimeout = 10 * time.Second
 	} else if listenTimeout < 0 {
-		return nil, fmt.Errorf("invalid listen timeout")
+		return nil, fmt.Errorf("listen timeout must be positive")
 	}
 
 	// Use default read timeout if not specified
 	if readTimeout == 0 {
 		readTimeout = 3 * time.Second
 	} else if readTimeout < 0 {
-		return nil, fmt.Errorf("invalid read timeout")
+		return nil, fmt.Errorf("read timeout must be positive")
 	}
 
 	return &Server[T]{
