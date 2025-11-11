@@ -3,6 +3,7 @@ package observationapi
 import (
 	"log"
 	"net/http"
+	"space-mission/pkg/models"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -13,7 +14,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // TelemetryWebSocket handles WebSocket connections sending telemetry updates.
-func TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
+func (o *ObservationAPI) TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("WebSocket upgrade failed:", err)
@@ -24,25 +25,23 @@ func TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			// Fetch telemetry snapshot
-			telemetryMap := make(map[uint16]interface{})
+	for range ticker.C {
+		// Build telemetry snapshot: map[roverID]Telemetry
+		telemetryMap := make(map[uint16]models.Telemetry)
 
-			func (o *ObservationAPI) TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
-				o.store.mu.RLock()
-			    for roverID, telemetry := range o.store.TelemetryMap() {
-			        telemetryMap[roverID] = telemetry
-			    }
-		   		o.store.mu.RUnlock()
+		rovers := o.store.ListRovers()
+		for _, ri := range rovers {
+			if ri == nil {
+				continue
 			}
-
-
-			if err := conn.WriteJSON(telemetryMap); err != nil {
-				log.Println("WebSocket write error:", err)
-				return
+			if tel, ok := o.store.GetLatestTelemetry(ri.RoverID); ok {
+				telemetryMap[ri.RoverID] = tel
 			}
+		}
+
+		if err := conn.WriteJSON(telemetryMap); err != nil {
+			log.Println("WebSocket write error:", err)
+			return
 		}
 	}
 }
