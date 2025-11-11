@@ -13,8 +13,6 @@ import (
 )
 
 // Server[T any] is a generic TCP server that accepts client connections and processes incoming data.
-// It uses a configurable decoder to deserialize packets and a handler to process the deserialized data.
-// The server is goroutine-safe and supports graceful shutdown.
 type Server[T any] struct {
 	listener      *net.TCPListener         // TCP listener for accepting client connections
 	addr          string                   // Server address in format "host:port"
@@ -29,8 +27,6 @@ type Server[T any] struct {
 }
 
 // NewServer[T any] creates and initializes a new TCP server instance.
-// It validates timeout parameters (zero values use defaults, negative values return errors)
-// and returns a configured server ready to start.
 func NewServer[T any](
 	addr string,
 	listenTimeout time.Duration,
@@ -63,8 +59,6 @@ func NewServer[T any](
 }
 
 // Start begins the TCP server and listens for incoming connections.
-// It resolves the server address, creates a TCP listener, and launches the accept loop in a goroutine.
-// Returns an error if the server is already running or if address binding fails.
 func (s *Server[T]) Start() error {
 	s.mu.Lock()
 
@@ -100,8 +94,6 @@ func (s *Server[T]) Start() error {
 }
 
 // acceptLoop continuously accepts new client connections in a loop.
-// It respects the stop signal and handles timeouts gracefully.
-// Each accepted connection is handled in a separate goroutine.
 func (s *Server[T]) acceptLoop() {
 	defer s.wg.Done()
 
@@ -145,8 +137,6 @@ func (s *Server[T]) acceptLoop() {
 }
 
 // handleConnection manages a single client connection for the lifetime of the connection.
-// It reads length-prefixed packets, deserializes them, and passes them to the handler.
-// The connection is closed when the client disconnects, an error occurs or the server shuts down.
 func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 	defer s.wg.Done()
 
@@ -219,8 +209,6 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 }
 
 // Stop gracefully shuts down the server by signaling all goroutines to exit,
-// closing the listener, and waiting for all goroutines to complete.
-// Returns an error if the server is not running.
 func (s *Server[T]) Stop() error {
 	s.mu.Lock()
 
