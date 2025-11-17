@@ -13,8 +13,6 @@ import (
 )
 
 // Client[T any] is a generic TCP client that connects to a server and sends serialized data.
-// It supports one-off sends and continuous streaming with configurable intervals.
-// The client is goroutine-safe and supports graceful shutdown.
 type Client[T any] struct {
 	conn         *net.TCPConn          // TCP connection to the server
 	serverAddr   string                // Server address in format "host:port"
@@ -28,8 +26,6 @@ type Client[T any] struct {
 }
 
 // NewClient[T any] creates and initializes a new TCP client instance.
-// It validates timeout and interval parameters (zero values use defaults, negative values return errors)
-// and returns a configured client ready to connect.
 func NewClient[T any](
 	serverAddr string,
 	dialTimeout time.Duration,
@@ -84,8 +80,6 @@ func (c *Client[T]) Connect() error {
 }
 
 // Send transmits serialized data to the server.
-// It serializes the input data and writes it with the configured write timeout.
-// Returns an error if not connected, serialization fails, or writing fails.
 func (c *Client[T]) Send(data T) error {
 	c.mu.Lock()
 
@@ -178,8 +172,6 @@ func (c *Client[T]) StartStream(source interfaces.Source[T], sndFrq time.Duratio
 }
 
 // Stop gracefully shuts down the client by closing the connection and stopping the streaming goroutine.
-// It waits for all goroutines to complete before returning.
-// Returns an error if the client is not connected.
 func (c *Client[T]) Stop() error {
 	c.mu.Lock()
 

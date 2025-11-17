@@ -1,43 +1,47 @@
 package observationapi
 
-// import (
-// 	"log"
-// 	"net/http"
-// 	"time"
-// )
+import (
+	"log"
+	"net/http"
+	"space-mission/pkg/models"
+	"time"
 
-// var upgrader = websocket.Upgrader{
-// 	CheckOrigin: func(r *http.Request) bool { return true }, // allow all origins, adjust for production!
-// }
+	"github.com/gorilla/websocket"
+)
 
-// // TelemetryWebSocket handles WebSocket connections sending telemetry updates.
-// func TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
-// 	conn, err := upgrader.Upgrade(w, r, nil)
-// 	if err != nil {
-// 		log.Println("WebSocket upgrade failed:", err)
-// 		return
-// 	}
-// 	defer conn.Close()
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true }, // allow all origins, adjust for production!
+}
 
-// 	ticker := time.NewTicker(1 * time.Second)
-// 	defer ticker.Stop()
+// TelemetryWebSocket handles WebSocket connections sending telemetry updates.
+func (o *ObservationAPI) TelemetryWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("WebSocket upgrade failed:", err)
+		return
+	}
+	defer conn.Close()
 
-// 	for {
-// 		select {
-// 		case <-ticker.C:
-// 			// Fetch telemetry snapshot
-// 			telemetryMap := make(map[uint16]interface{})
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
-// 			store.mu.RLock()
-// 			for roverID, telemetry := range store.TelemetryMap() {
-// 				telemetryMap[roverID] = telemetry
-// 			}
-// 			store.mu.RUnlock()
+	for range ticker.C {
+		// Build telemetry snapshot: map[roverID]Telemetry
+		telemetryMap := make(map[uint16]models.Telemetry)
 
-// 			if err := conn.WriteJSON(telemetryMap); err != nil {
-// 				log.Println("WebSocket write error:", err)
-// 				return
-// 			}
-// 		}
-// 	}
-// }
+		rovers := o.store.ListRovers()
+		for _, ri := range rovers {
+			if ri == nil {
+				continue
+			}
+			if tel, ok := o.store.GetLatestTelemetry(ri.RoverID); ok {
+				telemetryMap[ri.RoverID] = tel
+			}
+		}
+
+		if err := conn.WriteJSON(telemetryMap); err != nil {
+			log.Println("WebSocket write error:", err)
+			return
+		}
+	}
+}
