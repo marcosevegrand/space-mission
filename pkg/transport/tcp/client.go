@@ -20,7 +20,6 @@ type Client[T any] struct {
 	serverAddr   string                // Server address in format "host:port"
 	dialTimeout  time.Duration         // Timeout for connecting to the server; defaults to 10s if not set
 	writeTimeout time.Duration         // Timeout for writing data to the server; defaults to 3s if not set
-	callInterval time.Duration         // Interval between sends when streaming; defaults to 3s if not set
 	encoder      interfaces.Encoder[T] // Function to serialize type T into packet bytes
 	wg           sync.WaitGroup        // WaitGroup to track the streaming goroutine
 	stopChan     chan struct{}         // Channel for signaling graceful shutdown
@@ -35,7 +34,6 @@ func NewClient[T any](
 	serverAddr string,
 	dialTimeout time.Duration,
 	writeTimeout time.Duration,
-	callInterval time.Duration,
 	encoder interfaces.Encoder[T],
 ) (*Client[T], error) {
 	// Use default dial timeout if not specified
@@ -52,18 +50,10 @@ func NewClient[T any](
 		return nil, fmt.Errorf("write timeout must be positive")
 	}
 
-	// Use default call interval if not specified
-	if callInterval == 0 {
-		callInterval = 3 * time.Second
-	} else if callInterval < 0 {
-		return nil, fmt.Errorf("call interval must be positive")
-	}
-
 	return &Client[T]{
 		serverAddr:   serverAddr,
 		dialTimeout:  dialTimeout,
 		writeTimeout: writeTimeout,
-		callInterval: callInterval,
 		encoder:      encoder,
 		stopChan:     make(chan struct{}),
 	}, nil
@@ -105,7 +95,6 @@ func (c *Client[T]) Send(data T) error {
 		return fmt.Errorf("not connected to server")
 	}
 
-	// Capture the connection reference to release the lock before sending
 	conn := c.conn
 	c.mu.Unlock()
 
@@ -141,7 +130,7 @@ func (c *Client[T]) Send(data T) error {
 // It calls the provided dataSource function repeatedly and sends the results to the server.
 // Automatically connects if not already connected.
 // The stream runs until Stop is called or an error occurs.
-func (c *Client[T]) StartStream(dataSource func() T) error {
+func (c *Client[T]) StartStream(source interfaces.Source[T], sndFrq time.Duration) error {
 	// Automatically connect if not already connected
 	if !c.connected {
 		if err := c.Connect(); err != nil {
@@ -155,7 +144,7 @@ func (c *Client[T]) StartStream(dataSource func() T) error {
 		defer c.wg.Done()
 
 		// Create a ticker that fires at the specified interval
-		ticker := time.NewTicker(c.callInterval)
+		ticker := time.NewTicker(sndFrq)
 		defer ticker.Stop()
 
 		for {
@@ -170,7 +159,11 @@ func (c *Client[T]) StartStream(dataSource func() T) error {
 				}
 
 				// Obtain fresh data from the source
-				data := dataSource()
+				data, err := source()
+				if err != nil {
+					log.Printf("data source error: %v", err)
+					return
+				}
 
 				// Send the data to the server
 				if err := c.Send(data); err != nil {

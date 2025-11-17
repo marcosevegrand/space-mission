@@ -19,7 +19,7 @@ const (
 	MessageTypeSize = 1 // uint8
 )
 
-// MissionCodec handles serialization and deserialization of MissionLink messages
+// MissionCodec handles encoding and decoding of Mission messages
 type MissionCodec struct{}
 
 // NewMissionCodec creates a new MissionCodec instance
@@ -27,22 +27,22 @@ func NewMissionCodec() *MissionCodec {
 	return &MissionCodec{}
 }
 
-// Serialize converts a MissionLinkMessage into a binary packet
-func (c *MissionCodec) Serialize(msg models.MissionMessage) ([]byte, error) {
+// Encode converts a MissionMessage into a binary packet
+func (c *MissionCodec) Encode(msg models.MissionMessage) ([]byte, error) {
 	switch msg := msg.(type) {
 	case models.MissionAssignment:
-		return c.serializeAssignment(msg)
+		return c.encodeAssignment(msg)
 	case models.MissionRequest:
-		return c.serializeRequest(msg)
+		return c.encodeRequest(msg)
 	case models.ProgressUpdate:
-		return c.serializeUpdate(msg)
+		return c.encodeUpdate(msg)
 	default:
 		return nil, ErrUnsupportedMessageType
 	}
 }
 
-// Deserialize converts a binary packet into a MissionLinkMessage
-func (c *MissionCodec) Deserialize(data []byte) (models.MissionMessage, error) {
+// Decode converts a binary packet into a MissionMessage
+func (c *MissionCodec) Decode(data []byte) (models.MissionMessage, error) {
 	if len(data) < MessageTypeSize {
 		return nil, ErrPacketTooShort
 	}
@@ -55,21 +55,25 @@ func (c *MissionCodec) Deserialize(data []byte) (models.MissionMessage, error) {
 		return nil, fmt.Errorf("failed to read message type: %w", err)
 	}
 
-	// Deserialize payload based on message type
+	// Decode payload based on message type
 	switch msgType {
 	case MessageTypeMissionRequest:
-		return c.deserializeRequest(reader)
+		return c.decodeRequest(reader)
 	case MessageTypeMissionAssignment:
-		return c.deserializeAssignment(reader)
+		return c.decodeAssignment(reader)
 	case MessageTypeProgressUpdate:
-		return c.deserializeUpdate(reader)
+		return c.decodeUpdate(reader)
 	default:
 		return nil, ErrInvalidMessageType
 	}
 }
 
-// serializeAssignment encodes a MissionAssignment message
-func (c *MissionCodec) serializeAssignment(msg models.MissionAssignment) ([]byte, error) {
+// ============================================================================
+// MissionAssignment Encoding/Decoding
+// ============================================================================
+
+// encodeAssignment encodes a MissionAssignment message
+func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 256))
 
 	// Write message type
@@ -77,9 +81,29 @@ func (c *MissionCodec) serializeAssignment(msg models.MissionAssignment) ([]byte
 		return nil, fmt.Errorf("failed to write message type: %w", err)
 	}
 
-	// Write RoverID
-	if err := binary.Write(buf, binary.BigEndian, msg.RoverID); err != nil {
-		return nil, fmt.Errorf("failed to write rover ID: %w", err)
+	// Write ID
+	if err := binary.Write(buf, binary.BigEndian, msg.ID); err != nil {
+		return nil, fmt.Errorf("failed to write ID: %w", err)
+	}
+
+	// Write Task
+	if err := binary.Write(buf, binary.BigEndian, uint8(msg.Task)); err != nil {
+		return nil, fmt.Errorf("failed to write task: %w", err)
+	}
+
+	// Encode GeographicArea
+	if err := c.encodeGeographicArea(buf, msg.GeographicArea); err != nil {
+		return nil, fmt.Errorf("failed to encode geographic area: %w", err)
+	}
+
+	// Write Status
+	if err := binary.Write(buf, binary.BigEndian, uint8(msg.Status)); err != nil {
+		return nil, fmt.Errorf("failed to write status: %w", err)
+	}
+
+	// Write Progress
+	if err := binary.Write(buf, binary.BigEndian, msg.Progress); err != nil {
+		return nil, fmt.Errorf("failed to write progress: %w", err)
 	}
 
 	// Write MaxDuration as int64 nanoseconds
@@ -92,11 +116,6 @@ func (c *MissionCodec) serializeAssignment(msg models.MissionAssignment) ([]byte
 		return nil, fmt.Errorf("failed to write update interval: %w", err)
 	}
 
-	// Serialize Mission
-	if err := c.serializeMission(buf, msg.Mission); err != nil {
-		return nil, fmt.Errorf("failed to serialize mission: %w", err)
-	}
-
 	// Write Timestamp as int64 Unix nanoseconds
 	if err := binary.Write(buf, binary.BigEndian, msg.Timestamp.UnixNano()); err != nil {
 		return nil, fmt.Errorf("failed to write timestamp: %w", err)
@@ -105,9 +124,72 @@ func (c *MissionCodec) serializeAssignment(msg models.MissionAssignment) ([]byte
 	return buf.Bytes(), nil
 }
 
-// serializeRequest encodes a MissionRequest message
-func (c *MissionCodec) serializeRequest(msg models.MissionRequest) ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, 32))
+// decodeAssignment decodes a MissionAssignment message
+func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMessage, error) {
+	var ma models.MissionAssignment
+	var task uint8
+	var status uint8
+	var maxDurationNs int64
+	var updateIntervalNs int64
+	var timestampNs int64
+
+	// Read ID
+	if err := binary.Read(reader, binary.BigEndian, &ma.ID); err != nil {
+		return nil, fmt.Errorf("failed to read ID: %w", err)
+	}
+
+	// Read Task
+	if err := binary.Read(reader, binary.BigEndian, &task); err != nil {
+		return nil, fmt.Errorf("failed to read task: %w", err)
+	}
+	ma.Task = models.Task(task)
+
+	// Decode GeographicArea
+	area, err := c.decodeGeographicArea(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode geographic area: %w", err)
+	}
+	ma.GeographicArea = area
+
+	// Read Status
+	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
+		return nil, fmt.Errorf("failed to read status: %w", err)
+	}
+	ma.Status = models.MissionStatus(status)
+
+	// Read Progress
+	if err := binary.Read(reader, binary.BigEndian, &ma.Progress); err != nil {
+		return nil, fmt.Errorf("failed to read progress: %w", err)
+	}
+
+	// Read MaxDuration
+	if err := binary.Read(reader, binary.BigEndian, &maxDurationNs); err != nil {
+		return nil, fmt.Errorf("failed to read max duration: %w", err)
+	}
+	ma.MaxDuration = time.Duration(maxDurationNs)
+
+	// Read UpdateInterval
+	if err := binary.Read(reader, binary.BigEndian, &updateIntervalNs); err != nil {
+		return nil, fmt.Errorf("failed to read update interval: %w", err)
+	}
+	ma.UpdateInterval = time.Duration(updateIntervalNs)
+
+	// Read Timestamp
+	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
+		return nil, fmt.Errorf("failed to read timestamp: %w", err)
+	}
+	ma.Timestamp = time.Unix(0, timestampNs)
+
+	return ma, nil
+}
+
+// ============================================================================
+// MissionRequest Encoding/Decoding
+// ============================================================================
+
+// encodeRequest encodes a MissionRequest message
+func (c *MissionCodec) encodeRequest(msg models.MissionRequest) ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, 64))
 
 	// Write message type
 	if err := binary.Write(buf, binary.BigEndian, MessageTypeMissionRequest); err != nil {
@@ -119,6 +201,11 @@ func (c *MissionCodec) serializeRequest(msg models.MissionRequest) ([]byte, erro
 		return nil, fmt.Errorf("failed to write rover ID: %w", err)
 	}
 
+	// Encode Position
+	if err := c.encodePosition(buf, msg.Position); err != nil {
+		return nil, fmt.Errorf("failed to encode position: %w", err)
+	}
+
 	// Write Timestamp as int64 Unix nanoseconds
 	if err := binary.Write(buf, binary.BigEndian, msg.Timestamp.UnixNano()); err != nil {
 		return nil, fmt.Errorf("failed to write timestamp: %w", err)
@@ -127,8 +214,38 @@ func (c *MissionCodec) serializeRequest(msg models.MissionRequest) ([]byte, erro
 	return buf.Bytes(), nil
 }
 
-// serializeUpdate encodes a ProgressUpdate message
-func (c *MissionCodec) serializeUpdate(msg models.ProgressUpdate) ([]byte, error) {
+// decodeRequest decodes a MissionRequest message
+func (c *MissionCodec) decodeRequest(reader *bytes.Reader) (models.MissionMessage, error) {
+	var mr models.MissionRequest
+	var timestampNs int64
+
+	// Read RoverID
+	if err := binary.Read(reader, binary.BigEndian, &mr.RoverID); err != nil {
+		return nil, fmt.Errorf("failed to read rover ID: %w", err)
+	}
+
+	// Decode Position
+	position, err := c.decodePosition(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode position: %w", err)
+	}
+	mr.Position = position
+
+	// Read Timestamp
+	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
+		return nil, fmt.Errorf("failed to read timestamp: %w", err)
+	}
+	mr.Timestamp = time.Unix(0, timestampNs)
+
+	return mr, nil
+}
+
+// ============================================================================
+// ProgressUpdate Encoding/Decoding
+// ============================================================================
+
+// encodeUpdate encodes a ProgressUpdate message
+func (c *MissionCodec) encodeUpdate(msg models.ProgressUpdate) ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 128))
 
 	// Write message type
@@ -146,9 +263,9 @@ func (c *MissionCodec) serializeUpdate(msg models.ProgressUpdate) ([]byte, error
 		return nil, fmt.Errorf("failed to write mission ID: %w", err)
 	}
 
-	// Write Status
-	if err := binary.Write(buf, binary.BigEndian, msg.Status); err != nil {
-		return nil, fmt.Errorf("failed to write status: %w", err)
+	// Write MissionStatus
+	if err := binary.Write(buf, binary.BigEndian, uint8(msg.MissionStatus)); err != nil {
+		return nil, fmt.Errorf("failed to write mission status: %w", err)
 	}
 
 	// Write Progress
@@ -156,14 +273,14 @@ func (c *MissionCodec) serializeUpdate(msg models.ProgressUpdate) ([]byte, error
 		return nil, fmt.Errorf("failed to write progress: %w", err)
 	}
 
-	// Write Content length and content
-	contentLen := uint16(len(msg.Content))
-	if err := binary.Write(buf, binary.BigEndian, contentLen); err != nil {
-		return nil, fmt.Errorf("failed to write content length: %w", err)
+	// Write data length and data
+	dataLen := uint16(len(msg.Data))
+	if err := binary.Write(buf, binary.BigEndian, dataLen); err != nil {
+		return nil, fmt.Errorf("failed to write data length: %w", err)
 	}
 
-	if _, err := buf.WriteString(msg.Content); err != nil {
-		return nil, fmt.Errorf("failed to write content: %w", err)
+	if _, err := buf.WriteString(msg.Data); err != nil {
+		return nil, fmt.Errorf("failed to write data: %w", err)
 	}
 
 	// Write Timestamp as int64 Unix nanoseconds
@@ -174,44 +291,102 @@ func (c *MissionCodec) serializeUpdate(msg models.ProgressUpdate) ([]byte, error
 	return buf.Bytes(), nil
 }
 
-// serializeMission encodes a Mission struct
-func (c *MissionCodec) serializeMission(buf *bytes.Buffer, mission models.Mission) error {
-	// Write Mission ID
-	if err := binary.Write(buf, binary.BigEndian, mission.ID); err != nil {
-		return fmt.Errorf("failed to write mission ID: %w", err)
+// decodeUpdate decodes a ProgressUpdate message
+func (c *MissionCodec) decodeUpdate(reader *bytes.Reader) (models.MissionMessage, error) {
+	var pu models.ProgressUpdate
+	var status uint8
+	var dataLen uint16
+	var timestampNs int64
+
+	// Read RoverID
+	if err := binary.Read(reader, binary.BigEndian, &pu.RoverID); err != nil {
+		return nil, fmt.Errorf("failed to read rover ID: %w", err)
 	}
 
-	// Write Task
-	if err := binary.Write(buf, binary.BigEndian, mission.Task); err != nil {
-		return fmt.Errorf("failed to write task: %w", err)
+	// Read MissionID
+	if err := binary.Read(reader, binary.BigEndian, &pu.MissionID); err != nil {
+		return nil, fmt.Errorf("failed to read mission ID: %w", err)
 	}
 
-	// Write Status
-	if err := binary.Write(buf, binary.BigEndian, mission.Status); err != nil {
-		return fmt.Errorf("failed to write mission status: %w", err)
+	// Read MissionStatus
+	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
+		return nil, fmt.Errorf("failed to read mission status: %w", err)
+	}
+	pu.MissionStatus = models.MissionStatus(status)
+
+	// Read Progress
+	if err := binary.Read(reader, binary.BigEndian, &pu.Progress); err != nil {
+		return nil, fmt.Errorf("failed to read progress: %w", err)
 	}
 
-	// Write Progress
-	if err := binary.Write(buf, binary.BigEndian, mission.Progress); err != nil {
-		return fmt.Errorf("failed to write mission progress: %w", err)
+	// Read data length
+	if err := binary.Read(reader, binary.BigEndian, &dataLen); err != nil {
+		return nil, fmt.Errorf("failed to read data length: %w", err)
 	}
 
-	// Serialize GeographicArea
-	if err := c.serializeGeographicArea(buf, mission.GeographicArea); err != nil {
-		return fmt.Errorf("failed to serialize geographic area: %w", err)
+	// Read Data
+	dataBuf := make([]byte, dataLen)
+	if _, err := reader.Read(dataBuf); err != nil {
+		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
+	pu.Data = string(dataBuf)
 
+	// Read Timestamp
+	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
+		return nil, fmt.Errorf("failed to read timestamp: %w", err)
+	}
+	pu.Timestamp = time.Unix(0, timestampNs)
+
+	return pu, nil
+}
+
+// ============================================================================
+// Helper Functions for Position
+// ============================================================================
+
+// encodePosition encodes a Position struct
+func (c *MissionCodec) encodePosition(buf *bytes.Buffer, pos models.Position) error {
+	if err := binary.Write(buf, binary.BigEndian, pos.X); err != nil {
+		return fmt.Errorf("failed to write position X: %w", err)
+	}
+	if err := binary.Write(buf, binary.BigEndian, pos.Y); err != nil {
+		return fmt.Errorf("failed to write position Y: %w", err)
+	}
+	if err := binary.Write(buf, binary.BigEndian, pos.Z); err != nil {
+		return fmt.Errorf("failed to write position Z: %w", err)
+	}
 	return nil
 }
 
-// serializeGeographicArea encodes a GeographicArea struct
-func (c *MissionCodec) serializeGeographicArea(buf *bytes.Buffer, area models.GeographicArea) error {
+// decodePosition decodes a Position struct
+func (c *MissionCodec) decodePosition(reader *bytes.Reader) (models.Position, error) {
+	var pos models.Position
+
+	if err := binary.Read(reader, binary.BigEndian, &pos.X); err != nil {
+		return models.Position{}, fmt.Errorf("failed to read position X: %w", err)
+	}
+	if err := binary.Read(reader, binary.BigEndian, &pos.Y); err != nil {
+		return models.Position{}, fmt.Errorf("failed to read position Y: %w", err)
+	}
+	if err := binary.Read(reader, binary.BigEndian, &pos.Z); err != nil {
+		return models.Position{}, fmt.Errorf("failed to read position Z: %w", err)
+	}
+
+	return pos, nil
+}
+
+// ============================================================================
+// Helper Functions for GeographicArea
+// ============================================================================
+
+// encodeGeographicArea encodes a GeographicArea struct
+func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.GeographicArea) error {
 	// Write Shape
-	if err := binary.Write(buf, binary.BigEndian, area.Shape); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, uint8(area.Shape)); err != nil {
 		return fmt.Errorf("failed to write shape: %w", err)
 	}
 
-	// Serialize Coordinates based on shape type
+	// Encode Coordinates based on shape type
 	switch coords := area.Coordinates.(type) {
 	case models.CoordsCircle:
 		// Write center X, Y
@@ -249,169 +424,9 @@ func (c *MissionCodec) serializeGeographicArea(buf *bytes.Buffer, area models.Ge
 	return nil
 }
 
-// deserializeAssignment decodes a MissionAssignment message
-func (c *MissionCodec) deserializeAssignment(reader *bytes.Reader) (models.MissionMessage, error) {
-	var roverID uint16
-	var maxDurationNs int64
-	var updateIntervalNs int64
-	var timestampNs int64
-
-	// Read RoverID
-	if err := binary.Read(reader, binary.BigEndian, &roverID); err != nil {
-		return nil, fmt.Errorf("failed to read rover ID: %w", err)
-	}
-
-	// Read MaxDuration
-	if err := binary.Read(reader, binary.BigEndian, &maxDurationNs); err != nil {
-		return nil, fmt.Errorf("failed to read max duration: %w", err)
-	}
-
-	// Read UpdateInterval
-	if err := binary.Read(reader, binary.BigEndian, &updateIntervalNs); err != nil {
-		return nil, fmt.Errorf("failed to read update interval: %w", err)
-	}
-
-	// Deserialize Mission
-	mission, err := c.deserializeMission(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize mission: %w", err)
-	}
-
-	// Read Timestamp
-	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
-		return nil, fmt.Errorf("failed to read timestamp: %w", err)
-	}
-
-	return models.MissionAssignment{
-		RoverID:        roverID,
-		MaxDuration:    time.Duration(maxDurationNs),
-		UpdateInterval: time.Duration(updateIntervalNs),
-		Mission:        mission,
-		Timestamp:      time.Unix(0, timestampNs),
-	}, nil
-}
-
-// deserializeRequest decodes a MissionRequest message
-func (c *MissionCodec) deserializeRequest(reader *bytes.Reader) (models.MissionMessage, error) {
-	var roverID uint16
-	var timestampNs int64
-
-	// Read RoverID
-	if err := binary.Read(reader, binary.BigEndian, &roverID); err != nil {
-		return nil, fmt.Errorf("failed to read rover ID: %w", err)
-	}
-
-	// Read Timestamp
-	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
-		return nil, fmt.Errorf("failed to read timestamp: %w", err)
-	}
-
-	return models.MissionRequest{
-		RoverID:   roverID,
-		Timestamp: time.Unix(0, timestampNs),
-	}, nil
-}
-
-// deserializeUpdate decodes a ProgressUpdate message
-func (c *MissionCodec) deserializeUpdate(reader *bytes.Reader) (models.MissionMessage, error) {
-	var roverID uint16
-	var missionID uint16
-	var status models.MissionStatus
-	var progress float32
-	var contentLen uint16
-	var timestampNs int64
-
-	// Read RoverID
-	if err := binary.Read(reader, binary.BigEndian, &roverID); err != nil {
-		return nil, fmt.Errorf("failed to read rover ID: %w", err)
-	}
-
-	// Read MissionID
-	if err := binary.Read(reader, binary.BigEndian, &missionID); err != nil {
-		return nil, fmt.Errorf("failed to read mission ID: %w", err)
-	}
-
-	// Read Status
-	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
-		return nil, fmt.Errorf("failed to read status: %w", err)
-	}
-
-	// Read Progress
-	if err := binary.Read(reader, binary.BigEndian, &progress); err != nil {
-		return nil, fmt.Errorf("failed to read progress: %w", err)
-	}
-
-	// Read Content length
-	if err := binary.Read(reader, binary.BigEndian, &contentLen); err != nil {
-		return nil, fmt.Errorf("failed to read content length: %w", err)
-	}
-
-	// Read Content
-	contentBuf := make([]byte, contentLen)
-	if _, err := reader.Read(contentBuf); err != nil {
-		return nil, fmt.Errorf("failed to read content: %w", err)
-	}
-
-	// Read Timestamp
-	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
-		return nil, fmt.Errorf("failed to read timestamp: %w", err)
-	}
-
-	return models.ProgressUpdate{
-		RoverID:   roverID,
-		MissionID: missionID,
-		Status:    status,
-		Progress:  progress,
-		Content:   string(contentBuf),
-		Timestamp: time.Unix(0, timestampNs),
-	}, nil
-}
-
-// deserializeMission decodes a Mission struct
-func (c *MissionCodec) deserializeMission(reader *bytes.Reader) (models.Mission, error) {
-	var id uint16
-	var task models.Task
-	var status models.MissionStatus
-	var progress float32
-
-	// Read Mission ID
-	if err := binary.Read(reader, binary.BigEndian, &id); err != nil {
-		return models.Mission{}, fmt.Errorf("failed to read mission ID: %w", err)
-	}
-
-	// Read Task
-	if err := binary.Read(reader, binary.BigEndian, &task); err != nil {
-		return models.Mission{}, fmt.Errorf("failed to read task: %w", err)
-	}
-
-	// Read Status
-	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
-		return models.Mission{}, fmt.Errorf("failed to read mission status: %w", err)
-	}
-
-	// Read Progress
-	if err := binary.Read(reader, binary.BigEndian, &progress); err != nil {
-		return models.Mission{}, fmt.Errorf("failed to read mission progress: %w", err)
-	}
-
-	// Deserialize GeographicArea
-	area, err := c.deserializeGeographicArea(reader)
-	if err != nil {
-		return models.Mission{}, fmt.Errorf("failed to deserialize geographic area: %w", err)
-	}
-
-	return models.Mission{
-		ID:             id,
-		Task:           task,
-		GeographicArea: area,
-		Status:         status,
-		Progress:       progress,
-	}, nil
-}
-
-// deserializeGeographicArea decodes a GeographicArea struct
-func (c *MissionCodec) deserializeGeographicArea(reader *bytes.Reader) (models.GeographicArea, error) {
-	var shape models.Shape
+// decodeGeographicArea decodes a GeographicArea struct
+func (c *MissionCodec) decodeGeographicArea(reader *bytes.Reader) (models.GeographicArea, error) {
+	var shape uint8
 
 	// Read Shape
 	if err := binary.Read(reader, binary.BigEndian, &shape); err != nil {
@@ -420,8 +435,8 @@ func (c *MissionCodec) deserializeGeographicArea(reader *bytes.Reader) (models.G
 
 	var coords models.Coords
 
-	// Deserialize Coordinates based on shape type
-	switch shape {
+	// Decode Coordinates based on shape type
+	switch models.Shape(shape) {
 	case models.ShapeCircle:
 		var centerX, centerY, radius float32
 
@@ -466,7 +481,7 @@ func (c *MissionCodec) deserializeGeographicArea(reader *bytes.Reader) (models.G
 	}
 
 	return models.GeographicArea{
-		Shape:       shape,
+		Shape:       models.Shape(shape),
 		Coordinates: coords,
 	}, nil
 }

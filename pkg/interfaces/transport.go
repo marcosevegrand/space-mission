@@ -1,6 +1,10 @@
 // Package interfaces defines common interfaces and type definitions for the transport layer
 package interfaces
 
+// Source is a function type that generates a value of type T
+// Used by clients or peers to provide data for transmission
+type Source[T any] func() (T, error)
+
 // Encoder is a function type that converts a typed data structure into bytes
 // Used by clients or peersto serialize data before sending
 type Encoder[T any] func(T) ([]byte, error)
@@ -10,9 +14,4 @@ type Encoder[T any] func(T) ([]byte, error)
 type Decoder[T any] func([]byte) (T, error)
 
 // Handler is a callback function that processes deserialized data
-// Used by servers to handle received data after deserialization
-// Returns error if the packet should cause connection closure
-type TCPHandler[T any] func(data T) error
-
-// Handler is a callback function that processes deserialized data
-type UDPHandler[T any] func(data T, addr string) error
+type Handler[T any] func(data T, senderAddr string) error

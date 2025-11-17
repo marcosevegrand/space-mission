@@ -4,13 +4,43 @@ import (
 	"time"
 )
 
-type Mission struct {
-	ID             uint16
+// MissionRequest represents a rover requesting a mission
+type MissionRequest struct {
+	RoverID   uint16
+	Position  Position
+	Timestamp time.Time
+}
+
+// MissionAssignment represents a mission assigned to a rover
+type MissionAssignment struct {
+	ID             uint16 // 0 should be reserved for system use
 	Task           Task
 	GeographicArea GeographicArea
 	Status         MissionStatus
 	Progress       float32 // value between 0 and 100
+	MaxDuration    time.Duration
+	UpdateInterval time.Duration
+	Timestamp      time.Time
 }
+
+// ProgressUpdate represents mission progress from a rover
+type ProgressUpdate struct {
+	RoverID       uint16
+	MissionID     uint16
+	MissionStatus MissionStatus
+	Progress      float32
+	Data          string
+	Timestamp     time.Time
+}
+
+// MissionMessage interface to unify all message types
+type MissionMessage interface {
+	isMissionMessage()
+}
+
+func (m MissionRequest) isMissionMessage()    {}
+func (m MissionAssignment) isMissionMessage() {}
+func (m ProgressUpdate) isMissionMessage()    {}
 
 type Task uint8
 
@@ -38,51 +68,19 @@ type GeographicArea struct {
 type MissionStatus uint8
 
 const (
-	MissionPending MissionStatus = iota + 1
+	MissionUnassigned MissionStatus = iota + 1
+	MissionAssigned
 	MissionInProgress
-	MissionPaused
+	MissionFailed
 	MissionCompleted
 )
 
 func (ms MissionStatus) String() string {
 	return [...]string{
-		"pending",
+		"unassigned",
+		"assigned",
 		"in_progress",
-		"paused",
+		"failed",
 		"completed",
 	}[ms-1]
 }
-
-// MissionRequest represents a rover requesting a mission
-type MissionRequest struct {
-	RoverID   uint16
-	Timestamp time.Time
-}
-
-// MissionAssignment represents a mission assigned to a rover
-type MissionAssignment struct {
-	RoverID        uint16
-	MaxDuration    time.Duration
-	UpdateInterval time.Duration
-	Mission        Mission
-	Timestamp      time.Time
-}
-
-// ProgressUpdate represents mission progress from a rover
-type ProgressUpdate struct {
-	RoverID   uint16
-	MissionID uint16
-	Status    MissionStatus
-	Progress  float32
-	Content   string
-	Timestamp time.Time
-}
-
-// MissionMessage interface to unify all message types
-type MissionMessage interface {
-	isMissionMessage()
-}
-
-func (m MissionRequest) isMissionMessage()    {}
-func (m MissionAssignment) isMissionMessage() {}
-func (m ProgressUpdate) isMissionMessage()    {}

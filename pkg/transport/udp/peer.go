@@ -55,7 +55,7 @@ type Peer[T any] struct {
 	addr         string
 	encoder      interfaces.Encoder[T]
 	decoder      interfaces.Decoder[T]
-	handler      interfaces.UDPHandler[T]
+	handler      interfaces.Handler[T]
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	retxTimeout  time.Duration
@@ -81,7 +81,7 @@ type Peer[T any] struct {
 // NewPeer constructs a new Peer.
 func NewPeer[T any](
 	addr string, logFileName string,
-	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.UDPHandler[T],
+	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.Handler[T],
 	readTimeout time.Duration, writeTimeout time.Duration, retxTimeout time.Duration,
 	recvTTL time.Duration, maxRetries uint16, maxSize uint16,
 ) (*Peer[T], error) {
@@ -170,6 +170,8 @@ func (p *Peer[T]) Start() error {
 	p.wg.Add(1)
 	go p.cleanupLoop()
 
+	p.lf.Write("[started] peer")
+
 	return nil
 }
 
@@ -233,6 +235,9 @@ func (p *Peer[T]) receive(frag []byte, addr *net.UDPAddr) error {
 }
 
 func (p *Peer[T]) handleAck(f *Fragment, addr *net.UDPAddr) error {
+
+	p.lf.Write("[received] ack for fragID %06d/%06d | seqNum %06d | %s", f.fragID+1, f.numFrags, f.seqNum, addr)
+
 	p.pktMu.Lock()
 	defer p.pktMu.Unlock()
 
@@ -252,6 +257,7 @@ func (p *Peer[T]) handleAck(f *Fragment, addr *net.UDPAddr) error {
 	}
 
 	if allAck {
+		p.lf.Write("[received] all fragments for seqNum %06d | %s", f.seqNum, addr)
 		select {
 		case pkt.ackChan <- true:
 		default:
@@ -279,10 +285,14 @@ func (p *Peer[T]) sendAck(seqNum uint32, fragID uint16, numFrags uint16, addr *n
 		return fmt.Errorf("failed to send ACK: %w", err)
 	}
 
+	p.lf.Write("[sent] ack for fragID %06d/%06d | seqNum %06d", fragID+1, numFrags, seqNum)
+
 	return nil
 }
 
 func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
+
+	p.lf.Write("[received] data with fragID %06d/%06d | seqNum %06d", f.fragID+1, f.numFrags, f.seqNum)
 
 	err := p.sendAck(f.seqNum, f.fragID, f.numFrags, addr)
 	if err != nil {
@@ -351,11 +361,10 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 			return fmt.Errorf("failed to decode reassembled payload: %w", err)
 		}
 
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
-			p.handler(data, senderAddr)
-		}()
+		err = p.handler(data, senderAddr)
+		if err != nil {
+			return fmt.Errorf("failed to handle data: %w", err)
+		}
 
 		return nil
 	}
@@ -416,14 +425,14 @@ func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 	p.sentPkts[seqNum] = pkt
 	p.pktMu.Unlock()
 
-	for i := uint16(0); i < numFrags; i++ {
-		start := i * maxPayloadSize
+	for fragID := uint16(0); fragID < numFrags; fragID++ {
+		start := fragID * maxPayloadSize
 		end := start + maxPayloadSize
 		end = min(end, payloadSize)
 
-		f := BuildDataFrag(seqNum, i, numFrags, payload[start:end])
+		f := BuildDataFrag(seqNum, fragID, numFrags, payload[start:end])
 		p.pktMu.Lock()
-		pkt.frags[i] = f
+		pkt.frags[fragID] = f
 		p.pktMu.Unlock()
 
 		err = p.sendPacket(f, addr)
@@ -434,7 +443,9 @@ func (p *Peer[T]) Send(data T, addrStr string) (<-chan bool, error) {
 			p.pktMu.Unlock()
 			return nil, fmt.Errorf("failed to send packet: %w", err)
 		}
-		pkt.sendTimes[i] = time.Now()
+		pkt.sendTimes[fragID] = time.Now()
+
+		p.lf.Write("[sent] fragID %06d/%06d | seqNum %06d", fragID+1, numFrags, seqNum)
 	}
 
 	p.pktMu.Lock()
@@ -502,6 +513,7 @@ func (p *Peer[T]) checkRetransmissions() {
 					dest := pkt.dest
 					p.pktMu.Unlock()
 					err := p.sendPacket(frag, dest)
+					p.lf.Write("[retransmitted] fragment with fragID %06d | seqNum %06d", i+1, seqNum)
 					if err != nil {
 						log.Printf("Error retransmitting packet: %v", err)
 					}

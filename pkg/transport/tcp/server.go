@@ -16,16 +16,16 @@ import (
 // It uses a configurable decoder to deserialize packets and a handler to process the deserialized data.
 // The server is goroutine-safe and supports graceful shutdown.
 type Server[T any] struct {
-	listener      *net.TCPListener         // TCP listener for accepting client connections
-	addr          string                   // Server address in format "host:port"
-	listenTimeout time.Duration            // Timeout for accepting new connections; defaults to 10s if not set
-	readTimeout   time.Duration            // Timeout for reading from each client connection; defaults to 3s if not set
-	decoder       interfaces.Decoder[T]    // Function to deserialize packet bytes into type T
-	handler       interfaces.TCPHandler[T] // Function to process deserialized data
-	wg            sync.WaitGroup           // WaitGroup to track all running goroutines
-	stopChan      chan struct{}            // Channel for signaling graceful shutdown
-	mu            sync.Mutex               // Mutex to protect the 'running' flag and concurrent access
-	running       bool                     // Flag indicating whether the server is currently running
+	listener      *net.TCPListener      // TCP listener for accepting client connections
+	addr          string                // Server address in format "host:port"
+	listenTimeout time.Duration         // Timeout for accepting new connections; defaults to 10s if not set
+	readTimeout   time.Duration         // Timeout for reading from each client connection; defaults to 3s if not set
+	decoder       interfaces.Decoder[T] // Function to deserialize packet bytes into type T
+	handler       interfaces.Handler[T] // Function to process deserialized data
+	wg            sync.WaitGroup        // WaitGroup to track all running goroutines
+	stopChan      chan struct{}         // Channel for signaling graceful shutdown
+	mu            sync.Mutex            // Mutex to protect the 'running' flag and concurrent access
+	running       bool                  // Flag indicating whether the server is currently running
 }
 
 // NewServer[T any] creates and initializes a new TCP server instance.
@@ -36,7 +36,7 @@ func NewServer[T any](
 	listenTimeout time.Duration,
 	readTimeout time.Duration,
 	decoder interfaces.Decoder[T],
-	handler interfaces.TCPHandler[T],
+	handler interfaces.Handler[T],
 ) (*Server[T], error) {
 	// Use default listen timeout if not specified
 	if listenTimeout == 0 {
@@ -155,18 +155,18 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 		conn.Close()
 	}()
 
+	s.mu.Lock()
+	clientAddr := conn.RemoteAddr().String()
+	rt := s.readTimeout
+	s.mu.Unlock()
+
 	for {
 		select {
 		case <-s.stopChan:
 			// Server is shutting down; close this connection
 			return
 		default:
-			// Set a deadline for reading; this allows checking the stop signal periodically
-			s.mu.Lock()
-			readTimeout := s.readTimeout
-			s.mu.Unlock()
-
-			conn.SetReadDeadline(time.Now().Add(readTimeout))
+			conn.SetReadDeadline(time.Now().Add(rt))
 
 			// Read the length prefix (first 4 bytes in big-endian format)
 			lengthBuf := make([]byte, 4)
@@ -210,7 +210,7 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 			}
 
 			// Process the deserialized data with the handler
-			if err := s.handler(data); err != nil {
+			if err := s.handler(data, clientAddr); err != nil {
 				log.Printf("handler error: %v", err)
 				return
 			}

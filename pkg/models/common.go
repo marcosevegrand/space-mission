@@ -48,7 +48,6 @@ type OperationalState uint8
 // Operational states that a rover can be in.
 const (
 	StateIdle      OperationalState = iota + 1 // Rover is stationary and idle
-	StateMoving                                // Rover is in motion
 	StateOnMission                             // Rover is executing a mission
 	StateError                                 // Rover encountered an error
 	StateUnknown                               // Rover state is unknown
@@ -57,7 +56,6 @@ const (
 func (os OperationalState) String() string {
 	return [...]string{
 		"idle",
-		"moving",
 		"on_mission",
 		"error",
 		"unknown",
@@ -76,7 +74,12 @@ const (
 )
 
 func (hs HealthStatus) String() string {
-	return [...]string{"ok", "warning", "critical", "unknown"}[hs-1]
+	return [...]string{
+		"ok",
+		"warning",
+		"critical",
+		"unknown",
+	}[hs-1]
 }
 
 // SystemHealth represents the health status of all major rover subsystems.
