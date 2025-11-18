@@ -55,11 +55,6 @@ func (c *Command) SimulateMovement(delta time.Duration, te *models.Telemetry, ma
 		return nil
 	}
 
-	if ma.Status != models.MissionInProgress {
-		te.Velocity.Speed = 0
-		return nil
-	}
-
 	// Ponto alvo da missão
 	targetX, targetY, err := getMissionTarget(ma)
 	if err != nil {
@@ -69,16 +64,20 @@ func (c *Command) SimulateMovement(delta time.Duration, te *models.Telemetry, ma
 	// Vetor de deslocamento
 	dx := targetX - te.Position.X
 	dy := targetY - te.Position.Y
-
 	dist := float32(math.Hypot(float64(dx), float64(dy)))
-	if dist < 0.1 { // chegou perto do alvo
+
+	// Chegou perto do alvo?
+	if dist < 0.1 {
 		te.Velocity.Speed = 0
-		ma.Progress = 100
+		// Somente iniciar a missão se estiver no local
+		if ma.Status != models.MissionCompleted {
+			ma.Status = models.MissionInProgress
+		}
 		return nil
 	}
 
-	// Definir velocidade e direção
-	speed := float32(0.1) // m/s ou outro valor ajustável
+	// Velocidade maior para simulação mais rápida
+	speed := float32(1.0) // m/s
 	te.Velocity.Speed = speed
 	te.Velocity.Direction = float32(math.Atan2(float64(dy), float64(dx)) * 180 / math.Pi)
 
@@ -155,28 +154,21 @@ func (c *Command) SimulateBattery(delta time.Duration, te *models.Telemetry, ma 
 	return nil
 }
 func (c *Command) SimulateTemperature(delta time.Duration, te *models.Telemetry, ma *models.MissionAssignment) error {
-	te.Temperature = randomInRange(15, 80)
-
-	if te.Temperature > 70 {
-		println("[ALERT] CRITICAL TEMPERATURE!")
-	}
-
+	te.Temperature = 50 + (rand.Float32()*10 - 5) // 50 ±5
 	return nil
 }
 
 func (c *Command) SimulateSysHealth(delta time.Duration, te *models.Telemetry, ma *models.MissionAssignment) error {
-	health := randomInRange(0, 100)
-
-	switch {
-	case health < 90:
-		te.SystemHealth.Overall = models.HealthWarning
-	default:
-		te.SystemHealth.Overall = models.HealthOK
-	}
-
-	if health < 90 {
+	life := 50 + (rand.Float32()*10 - 5) // 50 ±5
+	if life < 20 {
 		println("[ALERT] Low Health!")
 	}
+	// manter enums OK para evitar panic
+	te.SystemHealth.Overall = models.HealthOK
+	te.SystemHealth.Motors = models.HealthOK
+	te.SystemHealth.Sensors = models.HealthOK
+	te.SystemHealth.Communication = models.HealthOK
+	te.SystemHealth.PowerSystem = models.HealthOK
 
 	return nil
 }
@@ -221,23 +213,22 @@ func (c *Command) SimulateMission(
 	ma *models.MissionAssignment,
 	buf *[]string,
 ) error {
+	if ma == nil {
+		return nil
+	}
 
 	switch ma.Status {
-	case models.MissionAssigned:
-		te.OperationalState = models.StateOnMission
-		ma.Status = models.MissionInProgress
 	case models.MissionInProgress:
-		// if !insideMissionArea(te.Position, ma.Mission.GeographicArea) {
-		// 	// move to mission site
-		// }
-		*buf = append(*buf, generateRandomString(2048))
-		ma.Progress += float32(10 * delta.Seconds())
+		// gerar dados simulados da missão
+		*buf = append(*buf, generateRandomString(1024))
 
-		if ma.Progress == 100 {
+		// aumentar progresso proporcional ao delta
+		ma.Progress += float32(10 * delta.Seconds())
+		if ma.Progress >= 100 {
+			ma.Progress = 100
 			ma.Status = models.MissionCompleted
+			te.OperationalState = models.StateIdle
 		}
-	case models.MissionCompleted:
-		te.OperationalState = models.StateIdle
 	}
 	return nil
 }

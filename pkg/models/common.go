@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 type Shape uint8
 
 const (
@@ -75,12 +77,12 @@ const (
 )
 
 func (hs HealthStatus) String() string {
-	return [...]string{
-		"ok",
-		"warning",
-		"critical",
-		"unknown",
-	}[hs-1]
+	names := [...]string{"ok", "warning", "critical", "unknown"}
+	index := int(hs) - 1
+	if index < 0 || index >= len(names) {
+		return fmt.Sprintf("HealthStatus(%d)", hs)
+	}
+	return names[index]
 }
 
 // SystemHealth represents the health status of all major rover subsystems.

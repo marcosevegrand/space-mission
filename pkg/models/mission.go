@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -52,12 +53,17 @@ const (
 )
 
 func (t Task) String() string {
-	return [...]string{
+	names := [...]string{
 		"sample_collection",
 		"image_capture",
 		"environmental_monitoring",
 		"terrain_mapping",
-	}[t-1]
+	}
+	index := int(t) - 1
+	if index < 0 || index >= len(names) {
+		return fmt.Sprintf("Task(%d)", t)
+	}
+	return names[index]
 }
 
 type GeographicArea struct {
@@ -76,11 +82,16 @@ const (
 )
 
 func (ms MissionStatus) String() string {
-	return [...]string{
+	names := [...]string{
 		"unassigned",
 		"assigned",
 		"in_progress",
 		"failed",
 		"completed",
-	}[ms-1]
+	}
+	index := int(ms) - 1
+	if index < 0 || index >= len(names) {
+		return fmt.Sprintf("MissionStatus(%d)", ms)
+	}
+	return names[index]
 }
