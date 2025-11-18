@@ -152,6 +152,12 @@ func (r *Rover) missionMsgHandler(msg models.MissionMessage, senderAddr string) 
 		r.maMu.Lock()
 		r.ma = &msg
 		r.maMu.Unlock()
+		// update to state "OnMission"
+		r.teMu.Lock()
+		if r.te != nil {
+			r.te.OperationalState = models.StateOnMission
+		}
+		r.teMu.Unlock()
 	default:
 		return fmt.Errorf("unexpected message type")
 	}
