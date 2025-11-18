@@ -49,6 +49,7 @@ type OperationalState uint8
 const (
 	StateIdle      OperationalState = iota + 1 // Rover is stationary and idle
 	StateOnMission                             // Rover is executing a mission
+	StateCharging                              // Rover is charging its battery
 	StateError                                 // Rover encountered an error
 	StateUnknown                               // Rover state is unknown
 )

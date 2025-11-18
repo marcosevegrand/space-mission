@@ -70,6 +70,8 @@ func NewRover(
 		stopChan: make(chan struct{}),
 	}
 
+	r.cmd = simulation.NewCommand()
+
 	teStream, err := tcp.NewClient(
 		streamAddr,
 		0, 0,
