@@ -143,7 +143,7 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 		}
 		m.miLink.Send(*assignment, senderAddr)
 	case models.ProgressUpdate:
-		fmt.Printf("[MISSION UPDATE] %03d | %s | %03.2f | %.20s...\n", msg.MissionID, msg.MissionStatus, msg.Progress, msg.Data)
+		fmt.Printf("[MISSION UPDATE] %03d | %s | %03.2f | %s...\n", msg.MissionID, msg.MissionStatus, msg.Progress, msg.Data)
 		m.updateMission(msg)
 	default:
 		return fmt.Errorf("unexpected message type")

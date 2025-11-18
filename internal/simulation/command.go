@@ -204,10 +204,6 @@ func SimulateDayTime() bool {
 	return cyclePos < daySeconds
 }
 
-func randomInRange(min, max float32) float32 {
-	return min + rand.Float32()*(max-min)
-}
-
 func (c *Command) SimulateMission(
 	delta time.Duration,
 	te *models.Telemetry,
