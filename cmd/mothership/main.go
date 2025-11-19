@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"space-mission/internal/mothership"
 	"space-mission/pkg/models"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -111,6 +114,28 @@ func main() {
 				}
 			}
 		}
+	})
+
+	http.HandleFunc("/rover/", func(w http.ResponseWriter, r *http.Request) {
+		idStr := strings.TrimPrefix(r.URL.Path, "/rover/")
+		if idStr == "" {
+			http.Error(w, "rover id required", http.StatusBadRequest)
+			return
+		}
+		id64, err := strconv.ParseUint(idStr, 10, 16)
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		tel, ok := m.GetLatestTelemetry(uint16(id64))
+		if !ok {
+			http.Error(w, "telemetry not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tel)
 	})
 
 	srv := &http.Server{

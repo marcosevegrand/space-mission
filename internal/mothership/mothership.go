@@ -128,8 +128,29 @@ func (m *Mothership) updateMission(msg models.ProgressUpdate) error {
 }
 
 func (m *Mothership) telemetryHandler(te models.Telemetry, senderAddr string) error {
-	fmt.Printf("%v\n", te)
+	// store latest telemetry for rover
+	copyTe := te
+	m.teRoMu.Lock()
+	// keep only the latest telemetry (overwrite)
+	m.teRo[te.RoverID] = []*models.Telemetry{&copyTe}
+	m.teRoMu.Unlock()
+
+	fmt.Printf("[TELEMETRY] rover=%d pos=%v battery=%.2f health=%v\n", te.RoverID, te.Position, te.BatteryLevel, te.SystemHealth.Overall)
 	return nil
+}
+
+// GetLatestTelemetry returns the most recent telemetry for a rover.
+// See [`mothership.Mothership`](internal/mothership/mothership.go).
+func (m *Mothership) GetLatestTelemetry(roverID uint16) (models.Telemetry, bool) {
+	m.teRoMu.Lock()
+	defer m.teRoMu.Unlock()
+
+	arr, ok := m.teRo[roverID]
+	if !ok || len(arr) == 0 {
+		return models.Telemetry{}, false
+	}
+	latest := arr[len(arr)-1]
+	return *latest, true
 }
 
 func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string) error {
