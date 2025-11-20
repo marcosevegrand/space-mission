@@ -9,7 +9,7 @@ import (
 func main() {
 	r, err := rover.NewRover(
 		1,
-		1*time.Second,
+		50*time.Millisecond,
 		5*time.Second,
 		"localhost:8001",
 		"localhost:9002",

@@ -8,8 +8,8 @@ import (
 	"space-mission/internal/simulation"
 	"space-mission/pkg/codecs"
 	"space-mission/pkg/models"
-	"space-mission/pkg/transport/tcp"
-	"space-mission/pkg/transport/udp"
+	"space-mission/pkg/transport/tcpstream"
+	"space-mission/pkg/transport/udplink"
 )
 
 type Rover struct {
@@ -30,8 +30,8 @@ type Rover struct {
 
 	cmd *simulation.Command
 
-	teStream *tcp.Client[models.Telemetry]
-	miLink   *udp.Peer[models.MissionMessage]
+	teStream *tcpstream.Client[*models.Telemetry]
+	miLink   *udplink.Peer[models.MissionMessage]
 
 	running  bool
 	stopChan chan struct{}
@@ -49,7 +49,7 @@ func NewRover(
 	if updtFrq == 0 {
 		updtFrq = 100 * time.Millisecond
 	}
-	if updtFrq < 100*time.Millisecond {
+	if updtFrq < 1*time.Millisecond {
 		return nil, fmt.Errorf("update frequency too low") // should try to keep telemetry up to date
 	}
 
@@ -70,23 +70,25 @@ func NewRover(
 		stopChan: make(chan struct{}),
 	}
 
-	teStream, err := tcp.NewClient(
+	teStream, err := tcpstream.NewClient(
 		streamAddr,
-		0, 0,
-		codecs.NewTelemetryCodec().Serialize,
+		"telemetry_stream.log",
+		codecs.NewTelemetryCodec().Encode,
+		tcpstream.DefaultClientTimeout,
+		tcpstream.DefaultReconnect,
 	)
 	if err != nil {
 		return nil, err
 	}
 	r.teStream = teStream
 
-	miLink, err := udp.NewPeer(
-		miRoAddr, "missionLink.log",
+	miLink, err := udplink.NewPeer(
+		miRoAddr,
+		"mission_link.log",
 		codecs.NewMissionCodec().Encode,
 		codecs.NewMissionCodec().Decode,
 		r.missionMsgHandler,
-		0, 0, 0,
-		0, 0, 0,
+		udplink.DefaultConfig,
 	)
 	if err != nil {
 		return nil, err
@@ -96,10 +98,10 @@ func NewRover(
 	return r, nil
 }
 
-func (r *Rover) getTelemetry() (models.Telemetry, error) {
+func (r *Rover) getTelemetry() (*models.Telemetry, error) {
 	r.teMu.Lock()
 	defer r.teMu.Unlock()
-	return *r.te, nil
+	return r.te, nil
 }
 
 func (r *Rover) getSendFrequency() time.Duration {
@@ -116,6 +118,12 @@ func (r *Rover) updateSendFrequency(sf time.Duration) {
 	case r.freqChangeChan <- true:
 	default:
 	}
+}
+
+func (r *Rover) updateMissionAssignment(ma *models.MissionAssignment) {
+	r.maMu.Lock()
+	defer r.maMu.Unlock()
+	r.ma = ma
 }
 
 // it also clears the buffer
@@ -142,14 +150,10 @@ func (r *Rover) isIdle() bool {
 func (r *Rover) missionMsgHandler(msg models.MissionMessage, senderAddr string) error {
 
 	switch msg := msg.(type) {
-	case models.MissionAssignment:
-		fmt.Printf("[MISSION ASSIGNMENT] %03d | %s | %s\n", msg.ID, msg.Task, msg.Status)
-		// update mission update frequency
-		r.updateSendFrequency(msg.UpdateInterval)
-		// update mission assignment
-		r.maMu.Lock()
-		r.ma = &msg
-		r.maMu.Unlock()
+	case *models.MissionAssignment:
+		// fmt.Printf("[MISSION ASSIGNMENT]\n%v\n", msg)
+		r.updateSendFrequency(msg.UpdateFrequency)
+		r.updateMissionAssignment(msg)
 	default:
 		return fmt.Errorf("unexpected message type")
 	}
@@ -208,12 +212,15 @@ func (r *Rover) requestMissionLoop(rqstAddr string) error {
 		select {
 		case <-tick.C:
 			if r.isIdle() {
-				msg := models.MissionRequest{
-					RoverID:   r.id,
-					Position:  models.Position{X: 0, Y: 0, Z: 0},
+				msg := &models.MissionRequest{
+					RoverID: r.id,
+					Position: models.GeoPoint{
+						Longitude: 0,
+						Latitude:  0,
+					},
 					Timestamp: time.Now(),
 				}
-				_, err := r.miLink.Send(msg, rqstAddr)
+				err := r.miLink.Send(msg, rqstAddr)
 				if err != nil {
 					return err
 				}
@@ -236,22 +243,24 @@ func (r *Rover) sendMissionUpdateLoop(updtAddr string) error {
 			if data == nil {
 				continue
 			} else {
-				r.maMu.Lock()
-				ma := *r.ma
-				r.maMu.Unlock()
-
 				for _, msgData := range data {
-					updtMsg := models.ProgressUpdate{
-						RoverID:       r.id,
-						MissionID:     ma.ID,
-						MissionStatus: ma.Status,
-						Progress:      ma.Progress,
-						Data:          msgData,
-						Timestamp:     time.Now(),
+					r.maMu.Lock()
+					ma := *r.ma
+					r.maMu.Unlock()
+					msg := &models.MissionUpdate{
+						RoverID:   r.id,
+						MissionID: ma.MissionID,
+						Status:    ma.Status,
+						Progress:  ma.Progress,
+						Data:      msgData,
+						Timestamp: time.Now(),
 					}
-					_, err := r.miLink.Send(updtMsg, updtAddr)
+					err := r.miLink.Send(msg, updtAddr)
 					if err != nil {
-						return err
+						fmt.Println("Error sending update: ", err)
+					}
+					if ma.Status == models.MissionCompleted || ma.Status == models.MissionFailed {
+						r.updateMissionAssignment(nil) // Limpa a missão
 					}
 				}
 			}

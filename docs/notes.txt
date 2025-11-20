@@ -1,3 +1,42 @@
+-----------------
+------ Q1 -------
+No missionLink já temos:
+    Acknowledgements
+    Retransmissions
+    Error Detection
+Também precisamos de implementar:
+    Error Correction (no caso FEC)
+    In-Order Delivery
+
+-----------------
+------ Q2 -------
+Na simulação do rover eu tenho um buffer (que é uma slice de strings) que guarda os dados que são gerados entre
+o último e próximo Mission Update
+Quando chegar o momento de fazer o update é preferível/suposto que seja mandado um único pacote Mission Update
+com todos os dados obtidos ou é também uma possibilidade enviar um burst de pacotes MissionUpdate
+No nosso caso é levantada essa questão porque o dados buferizados entre updates são separados por momentos de geração
+por exemplo o rover com um updateFrequency de 3 segundos:
+t = 0
+    recebe um mission assignment
+    envia um update a dizer que a mission está em progress
+t = 3s
+    consulta o buffer e vê lá guardados os dados:
+    ["Dados obtidos no intervalo [0,1]", "Dados obtidos no intervalo [1,2]", "Dados obtidos no intervalo [2,3]"]
+        (isto porque o sensor que fornece estes dados, fornece-os de segundo em segundo)
+    o rover agora dependendo de como decidirmos pode concatenar este dados todos e envia-los num unico pacote Mission Update ou simplesmente mandar um MissionUpdate por string nesse buffer, neste caso mandar 3 mission updates
+
+-----------------
+------ Q3 -------
+No receive loop do peer UDP que escuta por pacotes, é criada uma thread para o processamento de cada pacote recebido
+caso o peer seja inundado com pacotes isto pode fazer com sejam criadas um número excessivo de threads, está tudo ok
+porque no nosso cenário os rovers e a nave mãe não chegariam a esse ponte ou seria melhor criar uma pool de threads por
+precaução?
+
+=======================================================================
+=======================================================================
+=======================================================================
+=======================================================================
+
 // Rover      -- Request    --> Mothership
 // Mothership -- Assignment --> Rover
 // Rover      -- Update     --> Mothership

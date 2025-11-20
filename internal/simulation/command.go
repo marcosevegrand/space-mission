@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-var (
-	LowestCoord  = models.Position{X: 0, Y: 0}
-	HighestCoord = models.Position{X: 100, Y: 100}
-)
-
 func generateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -34,17 +29,15 @@ func NewCommand() *Command {
 
 func (c *Command) SimulateNewRover(id uint16, te *models.Telemetry) error {
 	te.RoverID = id
-	te.Position = models.Position{X: 0, Y: 0, Z: 0}
+	te.Position = models.GeoPoint{Latitude: 0, Longitude: 0}
 	te.OperationalState = models.StateIdle
-	te.BatteryLevel = 100
+	te.BatteryPercentage = 100
 	te.Velocity = models.Velocity{Speed: 0, Direction: 0}
 	te.Temperature = 50
 	te.SystemHealth = models.SystemHealth{
-		Overall:       models.HealthOK,
-		Motors:        models.HealthOK,
-		Sensors:       models.HealthOK,
-		Communication: models.HealthOK,
-		PowerSystem:   models.HealthOK,
+		Motors:      models.HealthOK,
+		Sensors:     models.HealthOK,
+		PowerSystem: models.HealthOK,
 	}
 	te.Timestamp = time.Now()
 	return nil
@@ -53,13 +46,13 @@ func (c *Command) SimulateNewRover(id uint16, te *models.Telemetry) error {
 func (c *Command) SimulateMovement(delta time.Duration, te *models.Telemetry, ma *models.MissionAssignment) error {
 	te.Velocity.Speed = 0.1
 	te.Velocity.Direction = 90
-	te.Position.X += te.Velocity.Speed * float32(math.Cos(float64(te.Velocity.Direction)))
-	te.Position.Y += te.Velocity.Speed * float32(math.Sin(float64(te.Velocity.Direction)))
+	te.Position.Latitude += te.Velocity.Speed * math.Cos(te.Velocity.Direction)
+	te.Position.Longitude += te.Velocity.Speed * math.Sin(te.Velocity.Direction)
 	return nil
 }
 
 func (c *Command) SimulateBattery(delta time.Duration, te *models.Telemetry, ma *models.MissionAssignment) error {
-	te.BatteryLevel -= 0.01
+	te.BatteryPercentage -= 0.01
 	te.Timestamp = time.Now()
 	return nil
 }
@@ -89,8 +82,8 @@ func (c *Command) SimulateMission(
 		// if !insideMissionArea(te.Position, ma.Mission.GeographicArea) {
 		// 	// move to mission site
 		// }
-		*buf = append(*buf, generateRandomString(2048))
-		ma.Progress += float32(10 * delta.Seconds())
+		*buf = append(*buf, generateRandomString(3000000))
+		ma.Progress += 10 * delta.Seconds()
 
 		if ma.Progress == 100 {
 			ma.Status = models.MissionCompleted
