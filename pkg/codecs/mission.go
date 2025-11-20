@@ -9,48 +9,67 @@ import (
 	"space-mission/pkg/models"
 )
 
-const (
-	// Message type identifiers
-	MessageTypeMissionRequest    uint8 = 0x01
-	MessageTypeMissionAssignment uint8 = 0x02
-	MessageTypeProgressUpdate    uint8 = 0x03
+// ============================================================================
+// Message Type Constants
+// ============================================================================
 
-	// Header field sizes
-	MessageTypeSize = 1 // uint8
+// Message type identifiers for different mission message types.
+const (
+	MessageTypeMissionRequest    uint8 = 0x01 // MissionRequest message type
+	MessageTypeMissionAssignment uint8 = 0x02 // MissionAssignment message type
+	MessageTypeMissionUpdate     uint8 = 0x03 // MissionUpdate message type
 )
 
-// MissionCodec handles encoding and decoding of Mission messages
+// Header field sizes in bytes.
+const (
+	MessageTypeSize = 1 // uint8 message type identifier size
+)
+
+// ============================================================================
+// MissionCodec Type and Constructor
+// ============================================================================
+
+// MissionCodec handles encoding and decoding of mission-related messages.
+// It converts between Go structs and binary wire format.
 type MissionCodec struct{}
 
-// NewMissionCodec creates a new MissionCodec instance
+// NewMissionCodec creates a new MissionCodec instance.
 func NewMissionCodec() *MissionCodec {
 	return &MissionCodec{}
 }
 
-// Encode converts a MissionMessage into a binary packet
+// ============================================================================
+// Main Encode/Decode Methods
+// ============================================================================
+
+// Encode converts a MissionMessage into a binary packet.
+// Returns the binary encoded data or an error if encoding fails.
+// Accepts pointer types for efficiency.
 func (c *MissionCodec) Encode(msg models.MissionMessage) ([]byte, error) {
 	switch msg := msg.(type) {
-	case models.MissionAssignment:
+	case *models.MissionAssignment:
 		return c.encodeAssignment(msg)
-	case models.MissionRequest:
+	case *models.MissionRequest:
 		return c.encodeRequest(msg)
-	case models.ProgressUpdate:
+	case *models.MissionUpdate:
 		return c.encodeUpdate(msg)
 	default:
 		return nil, ErrUnsupportedMessageType
 	}
 }
 
-// Decode converts a binary packet into a MissionMessage
+// Decode converts a binary packet into a MissionMessage.
+// Reads the message type from the packet and routes to the appropriate decoder.
+// Returns a pointer to the decoded message for efficiency.
 func (c *MissionCodec) Decode(data []byte) (models.MissionMessage, error) {
 	if len(data) < MessageTypeSize {
 		return nil, ErrPacketTooShort
 	}
 
 	reader := bytes.NewReader(data)
-	var msgType uint8
 
 	// Read message type
+	var msgType uint8
 	if err := binary.Read(reader, binary.BigEndian, &msgType); err != nil {
 		return nil, fmt.Errorf("failed to read message type: %w", err)
 	}
@@ -61,7 +80,7 @@ func (c *MissionCodec) Decode(data []byte) (models.MissionMessage, error) {
 		return c.decodeRequest(reader)
 	case MessageTypeMissionAssignment:
 		return c.decodeAssignment(reader)
-	case MessageTypeProgressUpdate:
+	case MessageTypeMissionUpdate:
 		return c.decodeUpdate(reader)
 	default:
 		return nil, ErrInvalidMessageType
@@ -72,8 +91,8 @@ func (c *MissionCodec) Decode(data []byte) (models.MissionMessage, error) {
 // MissionAssignment Encoding/Decoding
 // ============================================================================
 
-// encodeAssignment encodes a MissionAssignment message
-func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, error) {
+// encodeAssignment encodes a MissionAssignment message into binary format.
+func (c *MissionCodec) encodeAssignment(msg *models.MissionAssignment) ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 256))
 
 	// Write message type
@@ -81,9 +100,9 @@ func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, e
 		return nil, fmt.Errorf("failed to write message type: %w", err)
 	}
 
-	// Write ID
-	if err := binary.Write(buf, binary.BigEndian, msg.ID); err != nil {
-		return nil, fmt.Errorf("failed to write ID: %w", err)
+	// Write MissionID
+	if err := binary.Write(buf, binary.BigEndian, msg.MissionID); err != nil {
+		return nil, fmt.Errorf("failed to write mission ID: %w", err)
 	}
 
 	// Write Task
@@ -92,7 +111,7 @@ func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, e
 	}
 
 	// Encode GeographicArea
-	if err := c.encodeGeographicArea(buf, msg.GeographicArea); err != nil {
+	if err := c.encodeGeographicArea(buf, msg.Area); err != nil {
 		return nil, fmt.Errorf("failed to encode geographic area: %w", err)
 	}
 
@@ -111,9 +130,9 @@ func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, e
 		return nil, fmt.Errorf("failed to write max duration: %w", err)
 	}
 
-	// Write UpdateInterval as int64 nanoseconds
-	if err := binary.Write(buf, binary.BigEndian, msg.UpdateInterval.Nanoseconds()); err != nil {
-		return nil, fmt.Errorf("failed to write update interval: %w", err)
+	// Write UpdateFrequency as int64 nanoseconds
+	if err := binary.Write(buf, binary.BigEndian, msg.UpdateFrequency.Nanoseconds()); err != nil {
+		return nil, fmt.Errorf("failed to write update frequency: %w", err)
 	}
 
 	// Write Timestamp as int64 Unix nanoseconds
@@ -124,18 +143,19 @@ func (c *MissionCodec) encodeAssignment(msg models.MissionAssignment) ([]byte, e
 	return buf.Bytes(), nil
 }
 
-// decodeAssignment decodes a MissionAssignment message
+// decodeAssignment decodes a MissionAssignment message from binary format.
+// Returns a pointer to the decoded MissionAssignment.
 func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMessage, error) {
-	var ma models.MissionAssignment
+	ma := &models.MissionAssignment{}
 	var task uint8
 	var status uint8
 	var maxDurationNs int64
-	var updateIntervalNs int64
+	var updateFrequencyNs int64
 	var timestampNs int64
 
-	// Read ID
-	if err := binary.Read(reader, binary.BigEndian, &ma.ID); err != nil {
-		return nil, fmt.Errorf("failed to read ID: %w", err)
+	// Read MissionID
+	if err := binary.Read(reader, binary.BigEndian, &ma.MissionID); err != nil {
+		return nil, fmt.Errorf("failed to read mission ID: %w", err)
 	}
 
 	// Read Task
@@ -149,7 +169,7 @@ func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMes
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode geographic area: %w", err)
 	}
-	ma.GeographicArea = area
+	ma.Area = area
 
 	// Read Status
 	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
@@ -168,11 +188,11 @@ func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMes
 	}
 	ma.MaxDuration = time.Duration(maxDurationNs)
 
-	// Read UpdateInterval
-	if err := binary.Read(reader, binary.BigEndian, &updateIntervalNs); err != nil {
-		return nil, fmt.Errorf("failed to read update interval: %w", err)
+	// Read UpdateFrequency
+	if err := binary.Read(reader, binary.BigEndian, &updateFrequencyNs); err != nil {
+		return nil, fmt.Errorf("failed to read update frequency: %w", err)
 	}
-	ma.UpdateInterval = time.Duration(updateIntervalNs)
+	ma.UpdateFrequency = time.Duration(updateFrequencyNs)
 
 	// Read Timestamp
 	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
@@ -187,8 +207,8 @@ func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMes
 // MissionRequest Encoding/Decoding
 // ============================================================================
 
-// encodeRequest encodes a MissionRequest message
-func (c *MissionCodec) encodeRequest(msg models.MissionRequest) ([]byte, error) {
+// encodeRequest encodes a MissionRequest message into binary format.
+func (c *MissionCodec) encodeRequest(msg *models.MissionRequest) ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 64))
 
 	// Write message type
@@ -202,7 +222,7 @@ func (c *MissionCodec) encodeRequest(msg models.MissionRequest) ([]byte, error) 
 	}
 
 	// Encode Position
-	if err := c.encodePosition(buf, msg.Position); err != nil {
+	if err := c.encodeGeoPoint(buf, msg.Position); err != nil {
 		return nil, fmt.Errorf("failed to encode position: %w", err)
 	}
 
@@ -214,9 +234,10 @@ func (c *MissionCodec) encodeRequest(msg models.MissionRequest) ([]byte, error) 
 	return buf.Bytes(), nil
 }
 
-// decodeRequest decodes a MissionRequest message
+// decodeRequest decodes a MissionRequest message from binary format.
+// Returns a pointer to the decoded MissionRequest.
 func (c *MissionCodec) decodeRequest(reader *bytes.Reader) (models.MissionMessage, error) {
-	var mr models.MissionRequest
+	mr := &models.MissionRequest{}
 	var timestampNs int64
 
 	// Read RoverID
@@ -225,7 +246,7 @@ func (c *MissionCodec) decodeRequest(reader *bytes.Reader) (models.MissionMessag
 	}
 
 	// Decode Position
-	position, err := c.decodePosition(reader)
+	position, err := c.decodeGeoPoint(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode position: %w", err)
 	}
@@ -241,15 +262,15 @@ func (c *MissionCodec) decodeRequest(reader *bytes.Reader) (models.MissionMessag
 }
 
 // ============================================================================
-// ProgressUpdate Encoding/Decoding
+// MissionUpdate Encoding/Decoding
 // ============================================================================
 
-// encodeUpdate encodes a ProgressUpdate message
-func (c *MissionCodec) encodeUpdate(msg models.ProgressUpdate) ([]byte, error) {
+// encodeUpdate encodes a MissionUpdate message into binary format.
+func (c *MissionCodec) encodeUpdate(msg *models.MissionUpdate) ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 128))
 
 	// Write message type
-	if err := binary.Write(buf, binary.BigEndian, MessageTypeProgressUpdate); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, MessageTypeMissionUpdate); err != nil {
 		return nil, fmt.Errorf("failed to write message type: %w", err)
 	}
 
@@ -263,9 +284,9 @@ func (c *MissionCodec) encodeUpdate(msg models.ProgressUpdate) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write mission ID: %w", err)
 	}
 
-	// Write MissionStatus
-	if err := binary.Write(buf, binary.BigEndian, uint8(msg.MissionStatus)); err != nil {
-		return nil, fmt.Errorf("failed to write mission status: %w", err)
+	// Write Status
+	if err := binary.Write(buf, binary.BigEndian, uint8(msg.Status)); err != nil {
+		return nil, fmt.Errorf("failed to write status: %w", err)
 	}
 
 	// Write Progress
@@ -291,31 +312,32 @@ func (c *MissionCodec) encodeUpdate(msg models.ProgressUpdate) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decodeUpdate decodes a ProgressUpdate message
+// decodeUpdate decodes a MissionUpdate message from binary format.
+// Returns a pointer to the decoded MissionUpdate.
 func (c *MissionCodec) decodeUpdate(reader *bytes.Reader) (models.MissionMessage, error) {
-	var pu models.ProgressUpdate
+	mu := &models.MissionUpdate{}
 	var status uint8
 	var dataLen uint16
 	var timestampNs int64
 
 	// Read RoverID
-	if err := binary.Read(reader, binary.BigEndian, &pu.RoverID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &mu.RoverID); err != nil {
 		return nil, fmt.Errorf("failed to read rover ID: %w", err)
 	}
 
 	// Read MissionID
-	if err := binary.Read(reader, binary.BigEndian, &pu.MissionID); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &mu.MissionID); err != nil {
 		return nil, fmt.Errorf("failed to read mission ID: %w", err)
 	}
 
-	// Read MissionStatus
+	// Read Status
 	if err := binary.Read(reader, binary.BigEndian, &status); err != nil {
-		return nil, fmt.Errorf("failed to read mission status: %w", err)
+		return nil, fmt.Errorf("failed to read status: %w", err)
 	}
-	pu.MissionStatus = models.MissionStatus(status)
+	mu.Status = models.MissionStatus(status)
 
 	// Read Progress
-	if err := binary.Read(reader, binary.BigEndian, &pu.Progress); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &mu.Progress); err != nil {
 		return nil, fmt.Errorf("failed to read progress: %w", err)
 	}
 
@@ -329,57 +351,57 @@ func (c *MissionCodec) decodeUpdate(reader *bytes.Reader) (models.MissionMessage
 	if _, err := reader.Read(dataBuf); err != nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
-	pu.Data = string(dataBuf)
+	mu.Data = string(dataBuf)
 
 	// Read Timestamp
 	if err := binary.Read(reader, binary.BigEndian, &timestampNs); err != nil {
 		return nil, fmt.Errorf("failed to read timestamp: %w", err)
 	}
-	pu.Timestamp = time.Unix(0, timestampNs)
+	mu.Timestamp = time.Unix(0, timestampNs)
 
-	return pu, nil
+	return mu, nil
 }
 
 // ============================================================================
-// Helper Functions for Position
+// Helper Functions for GeoPoint Encoding/Decoding
 // ============================================================================
 
-// encodePosition encodes a Position struct
-func (c *MissionCodec) encodePosition(buf *bytes.Buffer, pos models.Position) error {
-	if err := binary.Write(buf, binary.BigEndian, pos.X); err != nil {
-		return fmt.Errorf("failed to write position X: %w", err)
+// encodeGeoPoint encodes a GeoPoint struct into binary format.
+// Writes latitude and longitude from the GeoPoint location.
+func (c *MissionCodec) encodeGeoPoint(buf *bytes.Buffer, pos models.GeoPoint) error {
+	if err := binary.Write(buf, binary.BigEndian, pos.Latitude); err != nil {
+		return fmt.Errorf("failed to write latitude: %w", err)
 	}
-	if err := binary.Write(buf, binary.BigEndian, pos.Y); err != nil {
-		return fmt.Errorf("failed to write position Y: %w", err)
-	}
-	if err := binary.Write(buf, binary.BigEndian, pos.Z); err != nil {
-		return fmt.Errorf("failed to write position Z: %w", err)
+	if err := binary.Write(buf, binary.BigEndian, pos.Longitude); err != nil {
+		return fmt.Errorf("failed to write longitude: %w", err)
 	}
 	return nil
 }
 
-// decodePosition decodes a Position struct
-func (c *MissionCodec) decodePosition(reader *bytes.Reader) (models.Position, error) {
-	var pos models.Position
+// decodeGeoPoint decodes a GeoPoint struct from binary format.
+// Reads latitude and longitude and creates a GeoPoint.
+func (c *MissionCodec) decodeGeoPoint(reader *bytes.Reader) (models.GeoPoint, error) {
+	var latitude, longitude float64
 
-	if err := binary.Read(reader, binary.BigEndian, &pos.X); err != nil {
-		return models.Position{}, fmt.Errorf("failed to read position X: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &latitude); err != nil {
+		return models.GeoPoint{}, fmt.Errorf("failed to read latitude: %w", err)
 	}
-	if err := binary.Read(reader, binary.BigEndian, &pos.Y); err != nil {
-		return models.Position{}, fmt.Errorf("failed to read position Y: %w", err)
-	}
-	if err := binary.Read(reader, binary.BigEndian, &pos.Z); err != nil {
-		return models.Position{}, fmt.Errorf("failed to read position Z: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &longitude); err != nil {
+		return models.GeoPoint{}, fmt.Errorf("failed to read longitude: %w", err)
 	}
 
-	return pos, nil
+	return models.GeoPoint{
+		Latitude:  latitude,
+		Longitude: longitude,
+	}, nil
 }
 
 // ============================================================================
-// Helper Functions for GeographicArea
+// Helper Functions for GeographicArea Encoding/Decoding
 // ============================================================================
 
-// encodeGeographicArea encodes a GeographicArea struct
+// encodeGeographicArea encodes a GeographicArea struct into binary format.
+// Writes the shape type and appropriate coordinates based on the shape.
 func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.GeographicArea) error {
 	// Write Shape
 	if err := binary.Write(buf, binary.BigEndian, uint8(area.Shape)); err != nil {
@@ -387,14 +409,14 @@ func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.Geogr
 	}
 
 	// Encode Coordinates based on shape type
-	switch coords := area.Coordinates.(type) {
+	switch coords := area.Coords.(type) {
 	case models.CoordsCircle:
-		// Write center X, Y
-		if err := binary.Write(buf, binary.BigEndian, coords.Center[0]); err != nil {
-			return fmt.Errorf("failed to write circle center X: %w", err)
+		// Write center latitude and longitude
+		if err := binary.Write(buf, binary.BigEndian, coords.Center.Latitude); err != nil {
+			return fmt.Errorf("failed to write circle center latitude: %w", err)
 		}
-		if err := binary.Write(buf, binary.BigEndian, coords.Center[1]); err != nil {
-			return fmt.Errorf("failed to write circle center Y: %w", err)
+		if err := binary.Write(buf, binary.BigEndian, coords.Center.Longitude); err != nil {
+			return fmt.Errorf("failed to write circle center longitude: %w", err)
 		}
 		// Write radius
 		if err := binary.Write(buf, binary.BigEndian, coords.Radius); err != nil {
@@ -402,19 +424,19 @@ func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.Geogr
 		}
 
 	case models.CoordsRectangle:
-		// Write TopLeft X, Y
-		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft[0]); err != nil {
-			return fmt.Errorf("failed to write rectangle top-left X: %w", err)
+		// Write TopLeft latitude and longitude
+		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft.Latitude); err != nil {
+			return fmt.Errorf("failed to write rectangle top-left latitude: %w", err)
 		}
-		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft[1]); err != nil {
-			return fmt.Errorf("failed to write rectangle top-left Y: %w", err)
+		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft.Longitude); err != nil {
+			return fmt.Errorf("failed to write rectangle top-left longitude: %w", err)
 		}
-		// Write BottomRight X, Y
-		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight[0]); err != nil {
-			return fmt.Errorf("failed to write rectangle bottom-right X: %w", err)
+		// Write BottomRight latitude and longitude
+		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight.Latitude); err != nil {
+			return fmt.Errorf("failed to write rectangle bottom-right latitude: %w", err)
 		}
-		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight[1]); err != nil {
-			return fmt.Errorf("failed to write rectangle bottom-right Y: %w", err)
+		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight.Longitude); err != nil {
+			return fmt.Errorf("failed to write rectangle bottom-right longitude: %w", err)
 		}
 
 	default:
@@ -424,7 +446,8 @@ func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.Geogr
 	return nil
 }
 
-// decodeGeographicArea decodes a GeographicArea struct
+// decodeGeographicArea decodes a GeographicArea struct from binary format.
+// Reads the shape type and appropriate coordinates based on the shape.
 func (c *MissionCodec) decodeGeographicArea(reader *bytes.Reader) (models.GeographicArea, error) {
 	var shape uint8
 
@@ -433,47 +456,56 @@ func (c *MissionCodec) decodeGeographicArea(reader *bytes.Reader) (models.Geogra
 		return models.GeographicArea{}, fmt.Errorf("failed to read shape: %w", err)
 	}
 
-	var coords models.Coords
+	var coords models.Coordinates
 
 	// Decode Coordinates based on shape type
 	switch models.Shape(shape) {
 	case models.ShapeCircle:
-		var centerX, centerY, radius float32
+		var centerLat, centerLon, radius float64
 
-		if err := binary.Read(reader, binary.BigEndian, &centerX); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read circle center X: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &centerLat); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read circle center latitude: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &centerY); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read circle center Y: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &centerLon); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read circle center longitude: %w", err)
 		}
 		if err := binary.Read(reader, binary.BigEndian, &radius); err != nil {
 			return models.GeographicArea{}, fmt.Errorf("failed to read circle radius: %w", err)
 		}
 
 		coords = models.CoordsCircle{
-			Center: [2]float32{centerX, centerY},
+			Center: models.GeoPoint{
+				Latitude:  centerLat,
+				Longitude: centerLon,
+			},
 			Radius: radius,
 		}
 
 	case models.ShapeRectangle:
-		var topLeftX, topLeftY, bottomRightX, bottomRightY float32
+		var topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64
 
-		if err := binary.Read(reader, binary.BigEndian, &topLeftX); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left X: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &topLeftLat); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left latitude: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &topLeftY); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left Y: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &topLeftLon); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left longitude: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &bottomRightX); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right X: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &bottomRightLat); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right latitude: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &bottomRightY); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right Y: %w", err)
+		if err := binary.Read(reader, binary.BigEndian, &bottomRightLon); err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right longitude: %w", err)
 		}
 
 		coords = models.CoordsRectangle{
-			TopLeft:     [2]float32{topLeftX, topLeftY},
-			BottomRight: [2]float32{bottomRightX, bottomRightY},
+			TopLeft: models.GeoPoint{
+				Latitude:  topLeftLat,
+				Longitude: topLeftLon,
+			},
+			BottomRight: models.GeoPoint{
+				Latitude:  bottomRightLat,
+				Longitude: bottomRightLon,
+			},
 		}
 
 	default:
@@ -481,7 +513,7 @@ func (c *MissionCodec) decodeGeographicArea(reader *bytes.Reader) (models.Geogra
 	}
 
 	return models.GeographicArea{
-		Shape:       models.Shape(shape),
-		Coordinates: coords,
+		Shape:  models.Shape(shape),
+		Coords: coords,
 	}, nil
 }

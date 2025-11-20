@@ -14,4 +14,4 @@ type Encoder[T any] func(T) ([]byte, error)
 type Decoder[T any] func([]byte) (T, error)
 
 // Handler is a callback function that processes deserialized data
-type Handler[T any] func(data T, senderAddr string) error
+type Handler[T any] func(T, string) error

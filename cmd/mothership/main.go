@@ -27,37 +27,37 @@ func main() {
 	}
 
 	m.AddMissionAssignment(&models.MissionAssignment{
-		ID:   1,
-		Task: models.TaskSampleCollection,
-		GeographicArea: models.GeographicArea{
+		MissionID: 1,
+		Task:      models.TaskSampleCollection,
+		Area: models.GeographicArea{
 			Shape: models.ShapeCircle,
-			Coordinates: models.CoordsCircle{
-				Center: [2]float32{10, 10},
+			Coords: models.CoordsCircle{
+				Center: models.GeoPoint{Latitude: 10, Longitude: 10},
 				Radius: 5,
 			},
 		},
-		Status:         models.MissionUnassigned,
-		Progress:       0,
-		MaxDuration:    10 * time.Minute,
-		UpdateInterval: 3 * time.Second,
-		Timestamp:      time.Now(),
+		Status:          models.MissionUnassigned,
+		Progress:        0,
+		MaxDuration:     10 * time.Minute,
+		UpdateFrequency: 3 * time.Second,
+		Timestamp:       time.Now(),
 	})
 
 	m.AddMissionAssignment(&models.MissionAssignment{
-		ID:   2,
-		Task: models.TaskImageCapture,
-		GeographicArea: models.GeographicArea{
+		MissionID: 2,
+		Task:      models.TaskImageCapture,
+		Area: models.GeographicArea{
 			Shape: models.ShapeCircle,
-			Coordinates: models.CoordsCircle{
-				Center: [2]float32{0, -100},
+			Coords: models.CoordsCircle{
+				Center: models.GeoPoint{Latitude: 0, Longitude: -100},
 				Radius: 10,
 			},
 		},
-		Status:         models.MissionUnassigned,
-		Progress:       0,
-		MaxDuration:    20 * time.Minute,
-		UpdateInterval: 3 * time.Second,
-		Timestamp:      time.Now(),
+		Status:          models.MissionUnassigned,
+		Progress:        0,
+		MaxDuration:     20 * time.Minute,
+		UpdateFrequency: 3 * time.Second,
+		Timestamp:       time.Now(),
 	})
 
 	if err := m.Start(); err != nil {
