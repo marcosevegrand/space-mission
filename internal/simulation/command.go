@@ -1,7 +1,6 @@
 package simulation
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"space-mission/pkg/models"
@@ -218,23 +217,25 @@ func (c *Command) SimulateMission(
 		return nil
 	}
 
-	switch ma.Task {
-	case models.TaskSampleCollection:
-		sample := fmt.Sprintf("SampleID:%d pH:%.2f mineral:%.2f%% mass:%.2fg",
-			rand.Intn(1000), 6+rand.Float32()*2, rand.Float32()*100, 0.5+rand.Float32()*9.5)
-		*buf = append(*buf, sample)
-	case models.TaskImageCapture:
-		img := fmt.Sprintf("image_%d.jpg resolution:%dx%d", rand.Intn(10000), 1920, 1080)
-		*buf = append(*buf, img)
-	case models.TaskEnvironmentalMonitoring:
-		env := fmt.Sprintf("Temp:%.1fC Pressure:%.1fkPa Radiation:%.2fmSv",
-			20+rand.Float32()*10, 90+rand.Float32()*20, 0+rand.Float32()*0.5)
-		*buf = append(*buf, env)
-	case models.TaskTerrainMapping:
-		x, y := te.Position.X+rand.Float32()*5, te.Position.Y+rand.Float32()*5
-		terrain := fmt.Sprintf("MappedPoint:%.2f,%.2f Elevation:%.2fm", x, y, 0+rand.Float32()*10)
-		*buf = append(*buf, terrain)
-	}
+	// switch ma.Task {
+	// case models.TaskSampleCollection:
+	// 	sample := fmt.Sprintf("SampleID:%d pH:%.2f mineral:%.2f%% mass:%.2fg",
+	// 		rand.Intn(1000), 6+rand.Float32()*2, rand.Float32()*100, 0.5+rand.Float32()*9.5)
+	// 	*buf = append(*buf, sample)
+	// case models.TaskImageCapture:
+	// 	img := fmt.Sprintf("image_%d.jpg resolution:%dx%d", rand.Intn(10000), 1920, 1080)
+	// 	*buf = append(*buf, img)
+	// case models.TaskEnvironmentalMonitoring:
+	// 	env := fmt.Sprintf("Temp:%.1fC Pressure:%.1fkPa Radiation:%.2fmSv",
+	// 		20+rand.Float32()*10, 90+rand.Float32()*20, 0+rand.Float32()*0.5)
+	// 	*buf = append(*buf, env)
+	// case models.TaskTerrainMapping:
+	// 	x, y := te.Position.X+rand.Float32()*5, te.Position.Y+rand.Float32()*5
+	// 	terrain := fmt.Sprintf("MappedPoint:%.2f,%.2f Elevation:%.2fm", x, y, 0+rand.Float32()*10)
+	// 	*buf = append(*buf, terrain)
+	// }
+
+	*buf = append(*buf, generateRandomString(3000000))
 
 	// aumentar progresso proporcional ao delta
 	ma.Progress += float32(10 * delta.Seconds())

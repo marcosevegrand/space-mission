@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mothership Dashboard</title>
+  <style>
+    :root{
+      --bg:#f6f8fa; --card:#fff; --muted:#6b7280; --accent:#2b6cb0;
+      --border: rgba(15,23,42,0.06);
+    }
+    html,body{height:100%;margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+    body{background:var(--bg); padding:24px; color:#0f1724;}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+    h1{font-size:20px;margin:0;color:var(--accent)}
+    .subtitle{color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+    .panel{background:transparent}
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      padding:14px;border-radius:10px;
+      box-shadow:0 1px 2px rgba(16,24,40,0.03);
+    }
+    .card h3{margin:0 0 8px 0;font-size:15px;color:#0b2545}
+    .meta{font-size:12px;color:var(--muted);margin-bottom:10px}
+    .row{display:flex;justify-content:space-between;padding:6px 0;border-top:1px dashed rgba(11,37,69,0.04);}
+    .row:first-of-type{border-top:0;padding-top:0}
+    .key{color:var(--muted);font-size:12px}
+    .val{font-weight:600;color:#10243a;font-size:13px}
+    .empty{color:var(--muted);padding:12px;text-align:center;font-size:13px}
+    .section-title{font-size:13px;margin:0 0 8px 0;color:#0b2545}
+    .controls{display:flex;gap:8px;align-items:center}
+    input[type="number"]{width:80px;padding:6px;border-radius:6px;border:1px solid var(--border)}
+    button{background:var(--accent);color:#fff;border:0;padding:8px 10px;border-radius:6px;cursor:pointer}
+    button.secondary{background:#e2e8f0;color:#0f1724}
+    @media (max-width:420px){body{padding:12px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Mothership Dashboard</h1>
+      <div class="subtitle">Live rover telemetry and mission assignments</div>
+    </div>
+    <div class="meta">HTTP: <strong id="health">?</strong> · WS: <strong id="wsstatus">?</strong></div>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="rovers-title">
+      <h2 class="section-title" id="rovers-title">Rovers</h2>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+        <div class="controls">
+          <label>Watch rover ID:
+            <input id="watchId" type="number" value="1" min="1"/>
+          </label>
+          <button id="watchBtn">Watch</button>
+          <button id="stopBtn" class="secondary" disabled>Stop</button>
+        </div>
+      </div>
+      <div id="rovers" class="grid">
+        <!-- rover cards rendered here -->
+      </div>
+    </section>
+
+    <section style="margin-top:18px" class="panel" aria-labelledby="missions-title">
+      <h2 class="section-title" id="missions-title">Missions</h2>
+      <div id="missions" class="grid">
+        <!-- mission cards rendered here -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Minimal rendering helpers
+    function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!==undefined) e.textContent=text; return e }
+
+    function renderKeyVal(key, val){
+      const r = el('div','row');
+      r.appendChild(el('div','key',key));
+      r.appendChild(el('div','val',val));
+      return r;
+    }
+
+    function normalizeTelemetry(obj){
+      if(!obj) return {};
+      // Accept different field names emitted by backend
+      return {
+        id: obj.RoverID ?? obj.id ?? obj.roverId ?? obj.RoverId,
+        position: obj.Position ?? obj.position ?? obj.pos ?? null,
+        battery: obj.BatteryLevel ?? obj.battery ?? obj.bat ?? 0,
+        status: obj.OperationalState ?? obj.operationalState ?? (obj.SystemHealth && (obj.SystemHealth.Overall ?? obj.SystemHealth.overall)) ?? null,
+        timestamp: obj.Timestamp ?? obj.timestamp ?? obj.lastSeen ?? null,
+        raw: obj
+      };
+    }
+
+    function renderRoverCard(r){
+      const c = el('div','card');
+      const id = r.id ?? '—';
+      c.appendChild(el('h3',null, 'Rover ' + id));
+      c.appendChild(el('div','meta', r.status ?? 'unknown'));
+      c.appendChild(renderKeyVal('Position', formatPos(r.position)));
+      const batVal = Number(r.battery ?? 0);
+      c.appendChild(renderKeyVal('Battery', isNaN(batVal) ? (r.battery||'—') : (batVal.toFixed(2)+'%')));
+      const last = r.timestamp ? new Date(r.timestamp).toLocaleString() : (r.raw && r.raw.Timestamp ? new Date(r.raw.Timestamp).toLocaleString() : '—');
+      c.appendChild(renderKeyVal('Last seen', last));
+      return c;
+    }
+
+    function renderMissionCard(m){
+      const c = el('div','card');
+      c.appendChild(el('h3',null,'Mission ' + (m.ID ?? m.id ?? '—')));
+      c.appendChild(el('div','meta', (m.Status ?? m.status ?? 'queued')));
+      const coords = (m.GeographicArea && m.GeographicArea.Coordinates) || m.target || m.Target || m.Position;
+      c.appendChild(renderKeyVal('Target', formatPos(coords)));
+      c.appendChild(renderKeyVal('Progress', ((Number(m.Progress ?? m.progress ?? 0)).toFixed ? Number(m.Progress ?? m.progress ?? 0).toFixed(2) : (m.Progress ?? m.progress ?? 0)) + '%'));
+      c.appendChild(renderKeyVal('Assigned to', m.RoverID ?? m.rover ?? '—'));
+      return c;
+    }
+
+    function formatPos(p){
+      if(!p) return '—';
+      const x = p.X ?? p.x ?? (p.Center && p.Center[0]) ?? (p.TopLeft && p.TopLeft[0]) ?? 0;
+      const y = p.Y ?? p.y ?? (p.Center && p.Center[1]) ?? (p.TopLeft && p.TopLeft[1]) ?? 0;
+      return `(${Number(x).toFixed(2)}, ${Number(y).toFixed(2)})`;
+    }
+
+    async function fetchJson(path){ try{ const res = await fetch(path, {cache:'no-store'}); if(!res.ok) return null; return await res.json(); }catch(e){ return null } }
+
+    // UI state
+    let ws = null;
+    let wsAlive = false;
+    let watchInterval = null;
+
+    async function loadMissions(){
+      const missions = await fetchJson('/api/missions') || [];
+      const mv = document.getElementById('missions'); mv.innerHTML='';
+      if(!missions || missions.length===0) mv.appendChild(el('div','empty','No missions available'));
+      else missions.forEach(m => mv.appendChild(renderMissionCard(m)));
+    }
+
+    // Poll single rover
+    async function pollRover(id){
+      const t = await fetchJson('/rover/' + id);
+      if(!t) return;
+      const nt = normalizeTelemetry(t);
+      const rv = document.getElementById('rovers'); rv.innerHTML=''; rv.appendChild(renderRoverCard(nt));
+    }
+
+    function startWatching(id){
+      stopWatching();
+      document.getElementById('watchBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      // If ws active we wait for ws messages; but still poll once immediately
+      pollRover(id);
+      watchInterval = setInterval(() => pollRover(id), 1000);
+    }
+    function stopWatching(){
+      document.getElementById('watchBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      if(watchInterval){ clearInterval(watchInterval); watchInterval = null; }
+    }
+
+    // Try websocket; on success use it to populate rover list when server pushes telemetry
+    function connectWS(){
+      const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = scheme + '//' + location.host + '/ws';
+      try{
+        ws = new WebSocket(url);
+      }catch(e){
+        updateWSStatus(false); return;
+      }
+
+      ws.onopen = () => { updateWSStatus(true); };
+      ws.onclose = () => { updateWSStatus(false); setTimeout(connectWS, 3000); };
+      ws.onerror = () => { updateWSStatus(false); ws && ws.close(); };
+
+      ws.onmessage = (evt) => {
+        // server may send "heartbeat" plain text or json telemetry map
+        let data = evt.data;
+        try{
+          const json = JSON.parse(data);
+          // if payload is a map of roverID -> Telemetry or single Telemetry
+          if(Array.isArray(json)){
+            renderManyTelemetry(json);
+          } else if(typeof json === 'object' && json !== null){
+            // if object keys are numeric -> map, otherwise treat as single telemetry
+            const keys = Object.keys(json);
+            const numericKeys = keys.length > 0 && keys.every(k => !isNaN(Number(k)));
+            if(numericKeys){
+              const arr = keys.map(k => normalizeTelemetry(json[k]));
+              renderManyTelemetry(arr);
+            } else if(json.RoverID || json.RoverId || json.id){
+              renderManyTelemetry([normalizeTelemetry(json)]);
+            } else {
+              // unknown object - ignore
+            }
+          }
+        }catch(e){
+          // non-json message, ignore or display
+          if(String(data).toLowerCase().includes('heartbeat')){
+            // ignore
+          }
+        }
+      };
+    }
+
+    function renderManyTelemetry(arr){
+      const rv = document.getElementById('rovers'); rv.innerHTML='';
+      if(!arr || arr.length === 0) rv.appendChild(el('div','empty','No rover telemetry available'));
+      else arr.forEach(t => rv.appendChild(renderRoverCard(normalizeTelemetry(t))));
+    }
+
+    function updateHealth(){
+      fetch('/health', {cache:'no-store'}).then(r => {
+        document.getElementById('health').textContent = r.ok ? 'ok' : 'bad';
+      }).catch(()=> document.getElementById('health').textContent = 'err');
+    }
+
+    function updateWSStatus(v){ wsAlive = v; document.getElementById('wsstatus').textContent = v ? 'connected' : 'disconnected'; }
+
+    // Init
+    document.getElementById('watchBtn').addEventListener('click', () => {
+      const id = Number(document.getElementById('watchId').value || 1);
+      startWatching(id);
+    });
+    document.getElementById('stopBtn').addEventListener('click', () => stopWatching());
+
+    // initial loads
+    loadMissions();
+    setInterval(loadMissions, 5000);
+    updateHealth();
+    setInterval(updateHealth, 5000);
+
+    // try ws and fallback to polling UI if ws unavailable
+    connectWS();
+    // if WS doesn't become ready after 1s, set disconnected and allow polling/watch usage
+    setTimeout(()=> { if(!wsAlive) updateWSStatus(false); }, 1000);
+  </script>
+</body>
+</html>

@@ -69,9 +69,15 @@ func main() {
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// serve the bundled frontend file so fetch()/WebSocket work from same origin
+		http.ServeFile(w, r, "internal/mothership/frontend.html")
+	})
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Write([]byte("Operational"))
 	})
 
 	// Substituído handler /ws para validar headers e logar motivo do Bad Request
@@ -81,7 +87,7 @@ func main() {
 		if err != nil {
 			// Log detalhado para diagnosticar handshake falhado / headers recebidos
 			log.Printf("ws upgrade failed: %v; RemoteAddr=%s\nHeaders: %+v", err, r.RemoteAddr, r.Header)
-			http.Error(w, "websocket upgrade failed", http.StatusBadRequest)
+			http.Error(w, "Websocket upgrade failed", http.StatusBadRequest)
 			return
 		}
 		defer conn.Close()

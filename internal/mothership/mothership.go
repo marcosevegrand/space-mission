@@ -1,12 +1,15 @@
 package mothership
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"space-mission/pkg/codecs"
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcp"
 	"space-mission/pkg/transport/udp"
 	"sync"
+	"time"
 )
 
 type Mothership struct {
@@ -20,6 +23,8 @@ type Mothership struct {
 
 	teStream *tcp.Server[models.Telemetry]
 	miLink   *udp.Peer[models.MissionMessage]
+
+	httpServer *http.Server
 
 	running  bool
 	stopChan chan struct{}
@@ -164,7 +169,7 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 		}
 		m.miLink.Send(*assignment, senderAddr)
 	case models.ProgressUpdate:
-		fmt.Printf("[MISSION UPDATE] %03d | %s | %03.2f | %s...\n", msg.MissionID, msg.MissionStatus, msg.Progress, msg.Data)
+		fmt.Printf("[MISSION UPDATE] %03d | %s | %03.2f | %.15s...\n", msg.MissionID, msg.MissionStatus, msg.Progress, msg.Data)
 		m.updateMission(msg)
 	default:
 		return fmt.Errorf("unexpected message type")
@@ -173,6 +178,7 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 	return nil
 }
 
+// Start starts the mothership's TCP and UDP servers.
 func (m *Mothership) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -196,12 +202,55 @@ func (m *Mothership) Start() error {
 	return nil
 }
 
+// StartHTTP starts a simple HTTP server that serves the embedded frontend on the provided address.
+// Call m.StartHTTP(":8080") (or another addr) after creating the mothership to serve the page.
+func (m *Mothership) StartHTTP(addr string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.httpServer != nil {
+		return fmt.Errorf("http server already running")
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(FrontendHTML)
+	})
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	m.httpServer = srv
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("[HTTP] server error: %v\n", err)
+		}
+	}()
+
+	fmt.Printf("[HTTP] frontend serving on %s\n", addr)
+	return nil
+}
+
+// Stop stops the mothership's servers and waits for them to terminate.
 func (m *Mothership) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if !m.running {
 		return fmt.Errorf("not running")
+	}
+
+	// gracefully shutdown HTTP server if running
+	if m.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = m.httpServer.Shutdown(ctx)
+		cancel()
+		m.httpServer = nil
 	}
 
 	close(m.stopChan)
