@@ -136,7 +136,7 @@ func main() {
 
 		tel, ok := m.GetLatestTelemetry(uint16(id64))
 		if !ok {
-			http.Error(w, "telemetry not found", http.StatusNotFound)
+			http.Error(w, "Telemetry not found", http.StatusNotFound)
 			return
 		}
 

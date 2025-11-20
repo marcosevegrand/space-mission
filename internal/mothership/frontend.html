@@ -154,7 +154,7 @@
       document.getElementById('stopBtn').disabled = false;
       // If ws active we wait for ws messages; but still poll once immediately
       pollRover(id);
-      watchInterval = setInterval(() => pollRover(id), 1000);
+      watchInterval = setInterval(() => pollRover(id), 500);
     }
     function stopWatching(){
       document.getElementById('watchBtn').disabled = false;

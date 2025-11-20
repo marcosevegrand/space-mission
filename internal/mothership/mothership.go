@@ -135,6 +135,10 @@ func (m *Mothership) updateMission(msg *models.MissionUpdate) error {
 }
 
 func (m *Mothership) telemetryHandler(te *models.Telemetry, senderAddr string) error {
+	m.teRoMu.Lock()
+	defer m.teRoMu.Unlock()
+
+	m.teRo[te.RoverID] = append(m.teRo[te.RoverID], te)
 	// fmt.Printf("%v\n", te)
 	return nil
 }
