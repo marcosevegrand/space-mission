@@ -1,9 +1,5 @@
 package models
 
-// ============================================================================
-// Spacial Data Types
-// ============================================================================
-
 // GeoPoint represents a geographic location using latitude and longitude.
 // This type is used consistently throughout the codebase for all coordinate pairs.
 type GeoPoint struct {

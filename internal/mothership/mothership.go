@@ -134,6 +134,20 @@ func (m *Mothership) telemetryHandler(te *models.Telemetry, senderAddr string) e
 	return nil
 }
 
+// GetLatestTelemetry returns the most recent telemetry for a rover.
+// See [`mothership.Mothership`](internal/mothership/mothership.go).
+func (m *Mothership) GetLatestTelemetry(roverID uint16) (models.Telemetry, bool) {
+	m.teRoMu.Lock()
+	defer m.teRoMu.Unlock()
+
+	arr, ok := m.teRo[roverID]
+	if !ok || len(arr) == 0 {
+		return models.Telemetry{}, false
+	}
+	latest := arr[len(arr)-1]
+	return *latest, true
+}
+
 func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string) error {
 
 	switch msg := msg.(type) {

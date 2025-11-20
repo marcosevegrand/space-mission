@@ -70,6 +70,8 @@ func NewRover(
 		stopChan: make(chan struct{}),
 	}
 
+	r.cmd = simulation.NewCommand()
+
 	teStream, err := tcpstream.NewClient(
 		streamAddr,
 		"telemetry_stream.log",
@@ -151,9 +153,20 @@ func (r *Rover) missionMsgHandler(msg models.MissionMessage, senderAddr string) 
 
 	switch msg := msg.(type) {
 	case *models.MissionAssignment:
-		// fmt.Printf("[MISSION ASSIGNMENT]\n%v\n", msg)
+		fmt.Printf("[MISSION ASSIGNMENT] %03d | %s | %s\n", msg.MissionID, msg.Task, msg.Status)
+		// update mission update frequency
 		r.updateSendFrequency(msg.UpdateFrequency)
-		r.updateMissionAssignment(msg)
+		// update mission assignment
+		r.maMu.Lock()
+		r.ma = msg
+		r.ma.Status = models.MissionInProgress
+		r.maMu.Unlock()
+		// update to state "OnMission"
+		r.teMu.Lock()
+		if r.te != nil {
+			r.te.OperationalState = models.StateOnMission
+		}
+		r.teMu.Unlock()
 	default:
 		return fmt.Errorf("unexpected message type")
 	}
