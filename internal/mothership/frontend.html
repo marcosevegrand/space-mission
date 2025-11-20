@@ -160,6 +160,13 @@
       document.getElementById('watchBtn').disabled = false;
       document.getElementById('stopBtn').disabled = true;
       if(watchInterval){ clearInterval(watchInterval); watchInterval = null; }
+
+      // Clear the single-rover display so the UI reflects that we're no longer watching
+      const rv = document.getElementById('rovers');
+      if (rv) {
+        rv.innerHTML = '';
+        rv.appendChild(el('div','empty','Not watching any rover'));
+      }
     }
 
     // Try websocket; on success use it to populate rover list when server pushes telemetry
@@ -214,11 +221,11 @@
 
     function updateHealth(){
       fetch('/health', {cache:'no-store'}).then(r => {
-        document.getElementById('health').textContent = r.ok ? 'ok' : 'bad';
+        document.getElementById('health').textContent = r.ok ? 'Operational' : 'Not Working';
       }).catch(()=> document.getElementById('health').textContent = 'err');
     }
 
-    function updateWSStatus(v){ wsAlive = v; document.getElementById('wsstatus').textContent = v ? 'connected' : 'disconnected'; }
+    function updateWSStatus(v){ wsAlive = v; document.getElementById('wsstatus').textContent = v ? 'Connected' : 'Disconnected'; }
 
     // Init
     document.getElementById('watchBtn').addEventListener('click', () => {
