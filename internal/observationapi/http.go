@@ -1,128 +1,183 @@
 package observationapi
 
-// import (
-// 	"encoding/json"
-// 	"net/http"
-// 	"strconv"
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"space-mission/internal/mothership"
+	"strconv"
+	"strings"
+)
 
-// 	"space-mission/internal/storage/memory")
+type APIResponse struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}
 
-// type ObservationAPI struct {
-// 	store *memory.MemoryStore
-// }
+type HTTPServer struct {
+	mothership *mothership.Mothership
+	addr       string
+}
 
-// func NewObservationAPI(store *memory.MemoryStore) *ObservationAPI {
-// 	return &ObservationAPI{store: store}
-// }
+func NewHTTPServer(ms *mothership.Mothership, addr string) *HTTPServer {
+	return &HTTPServer{
+		mothership: ms,
+		addr:       addr,
+	}
+}
 
-// // ListActiveRovers retorna todos os rovers atualmente armazenados
-// func (o *ObservationAPI) ListActiveRovers(w http.ResponseWriter, r *http.Request) {
-// 	rovers := o.store.ListRovers()
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(rovers)
-// }
+func (s *HTTPServer) Start() error {
+	router := http.NewServeMux()
 
-// // ListMissions retorna todas as missões (ativas e concluídas)
-// func (o *ObservationAPI) ListMissions(w http.ResponseWriter, r *http.Request) {
-// 	missions := o.store.ListMissions()
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(missions)
-// }
+	// CORS middleware
+	corsHandler := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
 
-// // ListActiveMissions retorna as missões que não foram concluídas
-// func (o *ObservationAPI) ListActiveMissions(w http.ResponseWriter, r *http.Request) {
-// 	missions := o.store.ListActiveMissions()
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(missions)
-// }
+	// API Routes
+	router.HandleFunc("/api/rovers", s.handleGetRovers)
+	router.HandleFunc("/api/rover/", s.handleRoverDetail)
+	router.HandleFunc("/api/missions", s.handleGetMissions)
+	router.HandleFunc("/api/mission/", s.handleMissionDetail)
+	router.HandleFunc("/api/health", s.handleHealth)
 
-// // GetMission retorna detalhes de uma missão específica, por ID
-// func (o *ObservationAPI) GetMission(w http.ResponseWriter, r *http.Request) {
-// 	idStr := r.URL.Query().Get("id")
-// 	if idStr == "" {
-// 		http.Error(w, "id parameter required", http.StatusBadRequest)
-// 		return
-// 	}
+	fmt.Printf("[HTTP SERVER] Starting on %s\n", s.addr)
+	return http.ListenAndServe(s.addr, corsHandler(router))
+}
 
-// 	id, err := strconv.ParseUint(idStr, 10, 16)
-// 	if err != nil {
-// 		http.Error(w, "invalid id parameter", http.StatusBadRequest)
-// 		return
-// 	}
+func (s *HTTPServer) handleGetRovers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-// 	mission, exists := o.store.GetMission(uint16(id))
-// 	if !exists {
-// 		http.Error(w, "mission not found", http.StatusNotFound)
-// 		return
-// 	}
+	rovers := s.mothership.GetAllRovers()
+	json.NewEncoder(w).Encode(APIResponse{Success: true, Data: rovers})
+}
 
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(mission)
-// }
+func (s *HTTPServer) handleRoverDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-// // GetRoverInfo retorna informações detalhadas do rover pelo ID
-// func (o *ObservationAPI) GetRoverInfo(w http.ResponseWriter, r *http.Request) {
-// 	idStr := r.URL.Query().Get("id")
-// 	if idStr == "" {
-// 		http.Error(w, "id parameter required", http.StatusBadRequest)
-// 		return
-// 	}
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Invalid rover ID",
+		})
+		return
+	}
 
-// 	id, err := strconv.ParseUint(idStr, 10, 16)
-// 	if err != nil {
-// 		http.Error(w, "invalid id parameter", http.StatusBadRequest)
-// 		return
-// 	}
+	roverID, err := strconv.ParseUint(parts[3], 10, 16)
+	if err != nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Invalid rover ID format",
+		})
+		return
+	}
 
-// 	roverInfo, exists := o.store.GetRoverInfo(uint16(id))
-// 	if !exists {
-// 		http.Error(w, "rover info not found", http.StatusNotFound)
-// 		return
-// 	}
+	telemetry := s.mothership.GetRover(uint16(roverID))
+	if telemetry == nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Rover not found",
+		})
+		return
+	}
 
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(roverInfo)
-// }
+	json.NewEncoder(w).Encode(APIResponse{Success: true, Data: telemetry})
+}
 
-// // ListRoverMissions retorna histórico de missões de um rover específico
-// func (o *ObservationAPI) ListRoverMissions(w http.ResponseWriter, r *http.Request) {
-// 	idStr := r.URL.Query().Get("roverId")
-// 	if idStr == "" {
-// 		http.Error(w, "roverId parameter required", http.StatusBadRequest)
-// 		return
-// 	}
+func (s *HTTPServer) handleGetMissions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-// 	id, err := strconv.ParseUint(idStr, 10, 16)
-// 	if err != nil {
-// 		http.Error(w, "invalid roverId parameter", http.StatusBadRequest)
-// 		return
-// 	}
+	missions := s.mothership.GetAllMissions()
+	json.NewEncoder(w).Encode(APIResponse{Success: true, Data: missions})
+}
 
-// 	missions := o.store.GetRoverMissions(uint16(id))
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(missions)
-// }
+func (s *HTTPServer) handleMissionDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-// // GetTelemetry retorna a última telemetria para um dado rover pelo ID via HTTP
-// func (o *ObservationAPI) GetTelemetry(w http.ResponseWriter, r *http.Request) {
-// 	idStr := r.URL.Query().Get("roverId")
-// 	if idStr == "" {
-// 		http.Error(w, "roverId parameter required", http.StatusBadRequest)
-// 		return
-// 	}
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Invalid mission ID",
+		})
+		return
+	}
 
-// 	id, err := strconv.ParseUint(idStr, 10, 16)
-// 	if err != nil {
-// 		http.Error(w, "invalid roverId parameter", http.StatusBadRequest)
-// 		return
-// 	}
+	missionID, err := strconv.ParseUint(parts[3], 10, 16)
+	if err != nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Invalid mission ID format",
+		})
+		return
+	}
 
-// 	telemetry, exists := o.store.GetLatestTelemetry(uint16(id))
-// 	if !exists {
-// 		http.Error(w, "telemetry not found", http.StatusNotFound)
-// 		return
-// 	}
+	mission := s.mothership.GetMission(uint16(missionID))
+	if mission == nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   "Mission not found",
+		})
+		return
+	}
 
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(telemetry)
-// }
+	json.NewEncoder(w).Encode(APIResponse{Success: true, Data: mission})
+}
+
+func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	health := map[string]interface{}{
+		"status":   "ok",
+		"rovers":   len(s.mothership.GetAllRovers()),
+		"missions": len(s.mothership.GetAllMissions()),
+	}
+
+	json.NewEncoder(w).Encode(APIResponse{Success: true, Data: health})
+}
+
+func (s *HTTPServer) handleGetLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Abre o ficheiro de log para leitura
+	file, err := os.Open("telemetry_stream.log") // usa o nome correto do teu ficheiro
+	if err != nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Erro a abrir log: %v", err),
+		})
+		return
+	}
+	defer file.Close()
+
+	var logs []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		logs = append(logs, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		json.NewEncoder(w).Encode(APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Erro a ler log: %v", err),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(APIResponse{
+		Success: true,
+		Data:    logs,
+	})
+}

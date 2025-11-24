@@ -90,6 +90,8 @@ func (m *Mothership) Start() error {
 	}
 	fmt.Println("[UDP LISTENER STARTED]")
 
+	go StartHTTPServer(m)
+
 	return nil
 }
 

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ground Control - Mission Commander</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1 class="title">🛰️ GROUND CONTROL</h1>
+                    <p class="subtitle">Mission Commander - Real-time Rover Monitoring</p>
+                </div>
+                <div class="connection-status">
+                    <span id="connectionStatus" class="status-indicator"></span>
+                    <span id="connectionText" class="status-text"></span>
+            </div style="display:flex;align-items:center;gap:10px;">
+                  <input type="text" id="apiUrl" value="http://localhost:8080" />
+                  <button id="connectBtn">Conectar</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Sidebar - Rovers List -->
+            <aside class="sidebar-left">
+                <div class="panel">
+                    <h2 class="panel-title">ROVERS</h2>
+                    <div class="rovers-list" id="roversList">
+                        <!-- Rovers will be populated here -->
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2 class="panel-title">QUICK STATS</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Active Rovers</span>
+                            <span class="stat-value" id="activeRovers">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Active Missions</span>
+                            <span class="stat-value" id="activeMissions">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">System Health</span>
+                            <span class="stat-value healthy" id="systemHealth">100%</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center Content -->
+            <section class="center-content">
+                <!-- Map Section -->
+                <div class="panel panel-large">
+                    <h2 class="panel-title">MISSION MAP</h2>
+                    <canvas id="mapCanvas" class="map-canvas"></canvas>
+                    <div class="map-legend">
+                        <div class="legend-item">
+                            <div class="legend-box rover"></div>
+                            <span>Rover Position</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box mission"></div>
+                            <span>Mission Target</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box path"></div>
+                            <span>Rover Path</span>
+                        </div>
+                    </div>
+                </div>
+
+
+            <!-- Right Sidebar - Missions & Alerts -->
+            <aside class="sidebar-right">
+                <!-- Active Missions -->
+                <div class="panel">
+                    <h2 class="panel-title">ACTIVE MISSIONS</h2>
+                    <div class="missions-list" id="missionsList">
+                        <!-- Missions will be populated here -->
+                    </div>
+                </div>
+
+            </aside>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span id="lastUpdate">Last Update: --:--:--</span>
+                <span class="separator">|</span>
+                <span id="uptime">Uptime: 00:00:00</span>
+                <span class="separator">|</span>
+                <button class="btn-secondary" onclick="location.reload()">Refresh Data</button>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
