@@ -2,78 +2,43 @@ package rover
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
-	"space-mission/internal/simulation"
 	"space-mission/pkg/codecs"
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcpstream"
 	"space-mission/pkg/transport/udplink"
+	"space-mission/pkg/utils/safe"
 )
 
 type Rover struct {
-	id      uint16
-	updtFrq time.Duration
-	rqstFrq time.Duration
+	id uint16
+	ce *ComputeElement
+	ts *tcpstream.Client[*models.Telemetry]
+	ml *udplink.Peer[models.MissionMessage]
 
-	te   *models.Telemetry
-	teMu sync.Mutex
-
-	ma   *models.MissionAssignment
-	maMu sync.Mutex
-
-	buf            []string
-	sndFrq         time.Duration
-	freqChangeChan chan bool
-	bufMu          sync.Mutex
-
-	cmd *simulation.Command
-
-	teStream *tcpstream.Client[*models.Telemetry]
-	miLink   *udplink.Peer[models.MissionMessage]
-
-	running  bool
+	running  *safe.Var[bool]
 	stopChan chan struct{}
 	wg       sync.WaitGroup
-	mu       sync.Mutex
 }
 
 func NewRover(
 	id uint16, // rover id
-	updtFrq time.Duration, // rover update frequency
-	rqstFrq time.Duration, // rover mission request frequency
-	streamAddr string, // mothership tcp address
-	miRoAddr string, // rover udp address
+	mothershipStreamAddr string, // mothership tcp address
+	roverLinkAddr string, // rover udp address
 ) (*Rover, error) {
-	if updtFrq == 0 {
-		updtFrq = 100 * time.Millisecond
-	}
-	if updtFrq < 1*time.Millisecond {
-		return nil, fmt.Errorf("update frequency too low") // should try to keep telemetry up to date
-	}
-
-	if rqstFrq == 0 {
-		rqstFrq = 3 * time.Second
-	}
-	if rqstFrq < time.Second {
-		return nil, fmt.Errorf("request frequency too low") // shouldn't spam mothership with requests
-	}
 
 	r := &Rover{
 		id:       id,
-		updtFrq:  updtFrq,
-		rqstFrq:  rqstFrq,
-		buf:      make([]string, 0),
-		sndFrq:   1 * time.Second,
-		running:  false,
+		ce:       NewComputeElement(id),
+		running:  safe.NewVar(false),
 		stopChan: make(chan struct{}),
 	}
 
-	r.cmd = simulation.NewCommand()
-
-	teStream, err := tcpstream.NewClient(
-		streamAddr,
+	telemetryStream, err := tcpstream.NewClient(
+		mothershipStreamAddr,
 		"telemetry_stream.log",
 		codecs.NewTelemetryCodec().Encode,
 		tcpstream.DefaultClientTimeout,
@@ -82,250 +47,177 @@ func NewRover(
 	if err != nil {
 		return nil, err
 	}
-	r.teStream = teStream
+	r.ts = telemetryStream
 
-	miLink, err := udplink.NewPeer(
-		miRoAddr,
+	missionLink, err := udplink.NewPeer(
+		roverLinkAddr,
 		"mission_link.log",
 		codecs.NewMissionCodec().Encode,
 		codecs.NewMissionCodec().Decode,
-		r.missionMsgHandler,
+		r.missionHandler,
 		udplink.DefaultConfig,
 	)
 	if err != nil {
 		return nil, err
 	}
-	r.miLink = miLink
+	r.ml = missionLink
 
 	return r, nil
 }
 
-func (r *Rover) getTelemetry() (*models.Telemetry, error) {
-	r.teMu.Lock()
-	defer r.teMu.Unlock()
-	return r.te, nil
-}
-
-func (r *Rover) getSendFrequency() time.Duration {
-	r.bufMu.Lock()
-	defer r.bufMu.Unlock()
-	return r.sndFrq
-}
-
-func (r *Rover) updateSendFrequency(sf time.Duration) {
-	r.bufMu.Lock()
-	defer r.bufMu.Unlock()
-	r.sndFrq = sf
-	select {
-	case r.freqChangeChan <- true:
-	default:
-	}
-}
-
-func (r *Rover) updateMissionAssignment(ma *models.MissionAssignment) {
-	r.maMu.Lock()
-	defer r.maMu.Unlock()
-	r.ma = ma
-}
-
-// it also clears the buffer
-func (r *Rover) getBufferedData() []string {
-	r.bufMu.Lock()
-	defer r.bufMu.Unlock()
-
-	if len(r.buf) == 0 {
-		return nil
-	}
-	buf := make([]string, len(r.buf))
-	copy(buf, r.buf)
-	r.buf = (r.buf)[:0]
-
-	return buf
-}
-
-func (r *Rover) isIdle() bool {
-	r.teMu.Lock()
-	defer r.teMu.Unlock()
-	return r.te.OperationalState == models.StateIdle
-}
-
-func (r *Rover) missionMsgHandler(msg models.MissionMessage, senderAddr string) error {
+func (r *Rover) missionHandler(msg models.MissionMessage, senderAddr string) error {
 
 	switch msg := msg.(type) {
 	case *models.MissionAssignment:
-		fmt.Printf("[MISSION ASSIGNMENT] %03d | %s | %s\n", msg.MissionID, msg.Task, msg.Status)
-		// update mission update frequency
-		r.updateSendFrequency(msg.UpdateFrequency)
-		// update mission assignment
-		r.maMu.Lock()
-		r.ma = msg
-		r.ma.Status = models.MissionInProgress
-		r.maMu.Unlock()
-		// update to state "OnMission"
-		r.teMu.Lock()
-		if r.te != nil {
-			r.te.OperationalState = models.StateOnMission
+		// Temporary print for debugging
+		fmt.Println(msg)
+
+		updateFrequency := msg.UpdateFrequency
+		r.ce.SetMissionAssignment(msg)
+		err := r.ce.StartMission()
+		if err != nil {
+			return fmt.Errorf("failed to start mission: %v", err)
 		}
-		r.teMu.Unlock()
+		r.sendMissionUpdates(updateFrequency, senderAddr)
+
 	default:
-		return fmt.Errorf("unexpected message type")
+		return fmt.Errorf("unexpected or unknown mission message type")
 	}
 
 	return nil
 }
 
-func (r *Rover) updateRoverLoop() error {
+func (r *Rover) sendMissionRequests(frequency time.Duration, addr string) error {
 
-	tick := time.NewTicker(r.updtFrq)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-			err := r.updateRover()
-			if err != nil {
-				return err
-			}
-		case <-r.stopChan:
-			return nil
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		err := r.missionRequestLoop(frequency, addr)
+		if err != nil {
+			log.Printf("mission request loop error: %v", err)
 		}
-	}
-}
-
-func (r *Rover) updateRover() error {
-	r.teMu.Lock()
-	defer r.teMu.Unlock()
-
-	r.maMu.Lock()
-	defer r.maMu.Unlock()
-
-	if r.te == nil {
-		r.te = new(models.Telemetry)
-		r.cmd.SimulateNewRover(r.id, r.te)
-	} else {
-		r.cmd.SimulateMovement(r.updtFrq, r.te, r.ma)
-		r.cmd.SimulateBattery(r.updtFrq, r.te, r.ma)
-		r.cmd.SimulateTemperature(r.updtFrq, r.te, r.ma)
-		r.cmd.SimulateSysHealth(r.updtFrq, r.te, r.ma)
-	}
-
-	if r.ma != nil {
-		r.bufMu.Lock()
-		r.cmd.SimulateMission(r.updtFrq, r.te, r.ma, &r.buf)
-		r.bufMu.Unlock()
-	}
+	}()
 
 	return nil
 }
 
-func (r *Rover) requestMissionLoop(rqstAddr string) error {
+func (r *Rover) missionRequestLoop(frequency time.Duration, addr string) error {
 
-	tick := time.NewTicker(r.rqstFrq)
+	tick := time.NewTicker(frequency)
 	defer tick.Stop()
+
 	for {
 		select {
-		case <-tick.C:
-			if r.isIdle() {
-				msg := &models.MissionRequest{
-					RoverID: r.id,
-					Position: models.GeoPoint{
-						Longitude: 0,
-						Latitude:  0,
-					},
-					Timestamp: time.Now(),
-				}
-				err := r.miLink.Send(msg, rqstAddr)
-				if err != nil {
-					return err
-				}
-			}
 		case <-r.stopChan:
 			return nil
-		}
-	}
-}
-
-func (r *Rover) sendMissionUpdateLoop(updtAddr string) error {
-	sf := r.getSendFrequency()
-
-	tick := time.NewTicker(sf)
-	defer tick.Stop()
-	for {
-		select {
 		case <-tick.C:
-			data := r.getBufferedData()
-			if data == nil {
+			request, skip := r.ce.GetMissionRequest()
+			if skip {
 				continue
-			} else {
-				for _, msgData := range data {
-					r.maMu.Lock()
-					ma := *r.ma
-					r.maMu.Unlock()
-					msg := &models.MissionUpdate{
-						RoverID:   r.id,
-						MissionID: ma.MissionID,
-						Status:    ma.Status,
-						Progress:  ma.Progress,
-						Data:      msgData,
-						Timestamp: time.Now(),
-					}
-					err := r.miLink.Send(msg, updtAddr)
-					if err != nil {
-						fmt.Println("Error sending update: ", err)
-					}
-					if ma.Status == models.MissionCompleted || ma.Status == models.MissionFailed {
-						r.updateMissionAssignment(nil) // Limpa a missão
-					}
-				}
 			}
-		case <-r.freqChangeChan:
-			sf = r.getSendFrequency()
-			tick.Reset(sf)
-		case <-r.stopChan:
-			return nil
+			err := r.ml.Send(&request, addr)
+			if err != nil {
+				log.Printf("failed to send mission request: %v", err)
+			}
 		}
 	}
 }
 
-func (r *Rover) Start(sndTeFrq time.Duration, updtMiAddr string) error {
-	r.mu.Lock()
-	if r.running {
+func (r *Rover) sendMissionUpdates(frequency time.Duration, addr string) error {
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		err := r.missionUpdateLoop(frequency, addr)
+		if err != nil {
+			log.Printf("mission update loop error: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+func (r *Rover) missionUpdateLoop(frequency time.Duration, addr string) error {
+
+	tick := time.NewTicker(frequency)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-r.stopChan:
+			return nil
+		case <-tick.C:
+			updates, stop := r.ce.GetMissionUpdates()
+
+			if stop {
+				return nil
+			}
+
+			for node := range updates.Nodes() {
+				err := r.ml.Send(&node.Value, addr)
+				if err != nil {
+					log.Printf("failed to send mission update: %v", err)
+				}
+			}
+		}
+	}
+}
+
+func (r *Rover) Start(
+	telemetryUpdateFrequency time.Duration,
+	missionRequestFrequency time.Duration,
+	missionRemoteAddr string,
+) error {
+	if r.running.Get() {
 		return fmt.Errorf("rover already running")
 	}
-	r.running = true
-	r.mu.Unlock()
+	r.running.Set(true)
 
-	go r.updateRoverLoop()
+	err := r.ce.Start()
+	if err != nil {
+		return err
+	}
+	fmt.Println("[COMPUTE ELEMENT STARTED]")
 
-	err := r.teStream.Connect()
+	err = r.ts.Connect()
 	if err != nil {
 		return err
 	}
 
-	err = r.teStream.StartStream(r.getTelemetry, sndTeFrq)
+	fmt.Println("[TCP CONNECTION ESTABLISHED]")
+
+	err = r.ts.StartStream(r.ce.GetTelemetry, telemetryUpdateFrequency)
 	if err != nil {
 		return err
 	}
+	fmt.Println("[TELEMETRY STREAM STARTED]")
 
-	err = r.miLink.Start()
+	err = r.ml.Start()
 	if err != nil {
 		return err
 	}
+	fmt.Println("[UDP LISTENER STARTED]")
 
-	go r.requestMissionLoop(updtMiAddr)
-
-	go r.sendMissionUpdateLoop(updtMiAddr)
+	err = r.sendMissionRequests(missionRequestFrequency, missionRemoteAddr)
+	if err != nil {
+		return err
+	}
+	fmt.Println("[MISSION REQUEST STREAM STARTED]")
 
 	return nil
 }
 
 func (r *Rover) Stop() error {
-	r.mu.Lock()
-	if !r.running {
-		return fmt.Errorf("rover not runnning")
+	if !r.running.Get() {
+		return fmt.Errorf("rover not running")
 	}
-	r.running = false
-	r.mu.Unlock()
+	r.running.Set(false)
 
 	close(r.stopChan)
+	r.ml.Stop()
+	r.ts.Stop()
+	r.ce.Stop()
+	r.wg.Wait()
+
 	return nil
 }

@@ -28,25 +28,22 @@ type Peer[T any] struct {
 	decoder interfaces.Decoder[T]
 	handler interfaces.Handler[T]
 
-	// Concurrency and state protection
-	pktMu sync.Mutex   // Protects all packet maps and sequence numbers
-	mu    sync.RWMutex // Protects the running state
-
 	// Packet and state management
 	nextSeqNum         uint32
 	sentPkts           map[uint32]*sentPacket
 	recvPkts           map[receivedPacketKey]*receivedPacket
 	recvBuffer         map[string][]*receivedPacket
 	nextExpectedSeqNum map[string]uint32
+	pktMu              sync.Mutex // Protects all packet maps and sequence numbers
 
 	// Goroutine lifecycle management
 	running  bool
+	mu       sync.RWMutex // Protects the running state
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 }
 
 // NewPeer constructs a new Peer. It accepts a pointer to a Config struct.
-// If a nil config is provided, DefaultConfig will be used.
 func NewPeer[T any](
 	addr string, logFileName string,
 	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.Handler[T],
@@ -124,11 +121,11 @@ func (p *Peer[T]) Start() error {
 
 	p.lf.Write("[EVENT] Peer started on %s", p.addr)
 
-	p.wg.Add(4) // All three goroutines are mandatory for operation
+	p.wg.Add(3) // All three goroutines are mandatory for operation
 	go p.receiveLoop()
 	go p.cleanupLoop()
 	go p.retransmissionLoop()
-	go p.statsLoop()
+	// go p.statsLoop()
 
 	return nil
 }

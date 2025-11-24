@@ -10,7 +10,7 @@ import (
 // during rover operations on the planet surface.
 type Telemetry struct {
 	RoverID           uint16           // Unique identifier for the rover
-	Position          GeoPoint         // Current geographic coordinates
+	Position          Point            // Current geographic coordinates
 	OperationalState  OperationalState // Current operational mode
 	BatteryPercentage float64          // Battery percentage (0-100)
 	Velocity          Velocity         // Current movement vector
@@ -27,15 +27,15 @@ func (t *Telemetry) String() string {
 		"-- Rover Telemetry (ID: %d) --\n"+
 			"  Timestamp:         %s\n"+
 			"  State:             %s\n"+
-			"  Position:          %v\n"+
+			"  Position:          (%.3f, %.3f)\n"+
 			"  Velocity:          %v\n"+
-			"  Battery:           %03.2f%%\n"+
+			"  Battery:           %.2f%%\n"+
 			"  Temperature:       %.2f°C\n"+
 			"  System Health:     %v",
 		t.RoverID,
 		t.Timestamp.Format(time.RFC3339),
 		t.OperationalState,
-		t.Position,
+		t.Position.X, t.Position.Y,
 		t.Velocity,
 		t.BatteryPercentage,
 		t.Temperature,

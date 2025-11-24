@@ -1,30 +1,34 @@
 package models
 
-// GeoPoint represents a geographic location using latitude and longitude.
+// ============================================================================
+// Spatial Types
+// ============================================================================
+
+// Point represents a location in a 2D Cartesian coordinate system.
 // This type is used consistently throughout the codebase for all coordinate pairs.
-type GeoPoint struct {
-	Latitude  float64 // Latitude in degrees (-90 to 90)
-	Longitude float64 // Longitude in degrees (-180 to 180)
+type Point struct {
+	X float64 // The X-coordinate of the point.
+	Y float64 // The Y-coordinate of the point.
 }
 
-// Velocity represents the movement vector of a rover.
-// Contains both the speed and direction of movement.
+// Velocity represents the movement vector of a rover in a 2D Cartesian plane.
+// It contains the X and Y components of the rover's velocity.
 type Velocity struct {
-	Speed     float64 // Speed in meters per second (non-negative)
-	Direction float64 // Direction in degrees (0-360), where 0 is North and 90 is East
+	X float64 // Velocity component along the X-axis in meters per second.
+	Y float64 // Velocity component along the Y-axis in meters per second.
 }
 
 // ============================================================================
 // Shape Types and Definitions
 // ============================================================================
 
-// Shape represents the geometric shape of a geographic area.
+// Shape represents the geometric shape of an area.
 type Shape uint8
 
-// Available shape types for geographic areas.
+// Available shape types for defined areas.
 const (
-	ShapeCircle    Shape = iota + 1 // Circular geographic area
-	ShapeRectangle                  // Rectangular geographic area
+	ShapeCircle    Shape = iota + 1 // A circular area
+	ShapeRectangle                  // A rectangular area
 )
 
 // String returns the string representation of a Shape.
@@ -43,22 +47,22 @@ func (s Shape) String() string {
 // Coordinate Types and Definitions
 // ============================================================================
 
-// CoordsCircle represents the coordinates of a circular area.
+// CoordsCircle represents the properties of a circular area.
 // Center defines the middle point and Radius defines the size of the circle.
 type CoordsCircle struct {
-	Center GeoPoint // Center point as latitude/longitude coordinates
-	Radius float64  // Radius in meters
+	Center Point   // The center point of the circle.
+	Radius float64 // The radius of the circle in meters.
 }
 
-// CoordsRectangle represents the coordinates of a rectangular area.
+// CoordsRectangle represents the properties of a rectangular area.
 // TopLeft and BottomRight define opposite corners of the rectangle.
 type CoordsRectangle struct {
-	TopLeft     GeoPoint // Top-left corner as latitude/longitude coordinates
-	BottomRight GeoPoint // Bottom-right corner as latitude/longitude coordinates
+	TopLeft     Point // The top-left corner of the rectangle.
+	BottomRight Point // The bottom-right corner of the rectangle.
 }
 
 // Coordinates is an interface that all coordinate types must implement.
-// This allows different shape coordinates to be treated uniformly.
+// This allows for uniform treatment of different shape definitions.
 type Coordinates interface {
 	isCoords()
 }
@@ -69,14 +73,14 @@ func (c CoordsCircle) isCoords()    {}
 func (r CoordsRectangle) isCoords() {}
 
 // ============================================================================
-// Geographic Area Types and Definitions
+// Area Types and Definitions
 // ============================================================================
 
-// GeographicArea represents a geographic region with a defined shape and coordinates.
+// GeographicArea represents a region with a defined shape and coordinates.
 // Used to specify areas where rovers should operate or missions should take place.
 type GeographicArea struct {
-	Shape  Shape       // Type of shape (circle or rectangle)
-	Coords Coordinates // Specific coordinates based on the shape type
+	Shape  Shape       // The type of shape (circle or rectangle).
+	Coords Coordinates // The specific coordinates defining the shape.
 }
 
 // ============================================================================
@@ -115,7 +119,7 @@ func (os OperationalState) String() string {
 // Health Status Types and Definitions
 // ============================================================================
 
-// HealthStatus represents the health status of a system or subsystem.
+// HealthStatus represents the health of a system or subsystem.
 // Indicates whether a component is functioning normally or has issues.
 type HealthStatus uint8
 
@@ -162,7 +166,7 @@ type Task uint8
 
 // Available task types that can be assigned to a rover.
 const (
-	TaskSampleCollection        Task = iota + 1 // Collect physical samples from the environment
+	TaskSampleAnalysis          Task = iota + 1 // Analyse physical samples from the environment
 	TaskImageCapture                            // Capture images and video data
 	TaskEnvironmentalMonitoring                 // Monitor environmental conditions
 	TaskTerrainMapping                          // Map and analyze terrain features
@@ -172,8 +176,8 @@ const (
 // This implements the Stringer interface for convenient string conversion.
 func (t Task) String() string {
 	switch t {
-	case TaskSampleCollection:
-		return "sample_collection"
+	case TaskSampleAnalysis:
+		return "sample_analysis"
 	case TaskImageCapture:
 		return "image_capture"
 	case TaskEnvironmentalMonitoring:

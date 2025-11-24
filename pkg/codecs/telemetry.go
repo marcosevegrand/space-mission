@@ -32,7 +32,7 @@ func (c *TelemetryCodec) Encode(msg *models.Telemetry) ([]byte, error) {
 	}
 
 	// Encode Position
-	if err := c.encodeGeoPoint(buf, msg.Position); err != nil {
+	if err := c.encodePoint(buf, msg.Position); err != nil {
 		return nil, fmt.Errorf("failed to encode position: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func (c *TelemetryCodec) Decode(data []byte) (*models.Telemetry, error) {
 		return nil, fmt.Errorf("failed to read RoverID: %w", err)
 	}
 
-	position, err := c.decodeGeoPoint(reader)
+	position, err := c.decodePoint(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode position: %w", err)
 	}
@@ -120,37 +120,34 @@ func (c *TelemetryCodec) Decode(data []byte) (*models.Telemetry, error) {
 }
 
 // ============================================================================
-// Helper Functions for GeoPoint Encoding/Decoding
+// Helper Functions for Point Encoding/Decoding
 // ============================================================================
 
-// encodeGeoPoint encodes a GeoPoint struct into binary format.
-// Writes latitude and longitude from the GeoPoint location.
-func (c *TelemetryCodec) encodeGeoPoint(buf *bytes.Buffer, pos models.GeoPoint) error {
-	if err := binary.Write(buf, binary.BigEndian, pos.Latitude); err != nil {
-		return fmt.Errorf("failed to write latitude: %w", err)
+// encodePoint encodes a Point struct into binary format.
+// Writes the X and Y coordinates from the Point location.
+func (c *TelemetryCodec) encodePoint(buf *bytes.Buffer, pt models.Point) error {
+	if err := binary.Write(buf, binary.BigEndian, pt.X); err != nil {
+		return fmt.Errorf("failed to write X coordinate: %w", err)
 	}
-	if err := binary.Write(buf, binary.BigEndian, pos.Longitude); err != nil {
-		return fmt.Errorf("failed to write longitude: %w", err)
+	if err := binary.Write(buf, binary.BigEndian, pt.Y); err != nil {
+		return fmt.Errorf("failed to write Y coordinate: %w", err)
 	}
 	return nil
 }
 
-// decodeGeoPoint decodes a GeoPoint struct from binary format.
-// Reads latitude and longitude and creates a GeoPoint.
-func (c *TelemetryCodec) decodeGeoPoint(reader *bytes.Reader) (models.GeoPoint, error) {
-	var latitude, longitude float64
+// decodePoint decodes a Point struct from binary format.
+// Reads X and Y coordinates and creates a Point.
+func (c *TelemetryCodec) decodePoint(reader *bytes.Reader) (models.Point, error) {
+	var x, y float64
 
-	if err := binary.Read(reader, binary.BigEndian, &latitude); err != nil {
-		return models.GeoPoint{}, fmt.Errorf("failed to read latitude: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &x); err != nil {
+		return models.Point{}, fmt.Errorf("failed to read X coordinate: %w", err)
 	}
-	if err := binary.Read(reader, binary.BigEndian, &longitude); err != nil {
-		return models.GeoPoint{}, fmt.Errorf("failed to read longitude: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &y); err != nil {
+		return models.Point{}, fmt.Errorf("failed to read Y coordinate: %w", err)
 	}
 
-	return models.GeoPoint{
-		Latitude:  latitude,
-		Longitude: longitude,
-	}, nil
+	return models.Point{X: x, Y: y}, nil
 }
 
 // ============================================================================
@@ -158,32 +155,32 @@ func (c *TelemetryCodec) decodeGeoPoint(reader *bytes.Reader) (models.GeoPoint, 
 // ============================================================================
 
 // encodeVelocity encodes a Velocity struct into binary format.
-// Writes speed and direction values.
+// Writes the X and Y components of the velocity vector.
 func (c *TelemetryCodec) encodeVelocity(buf *bytes.Buffer, vel models.Velocity) error {
-	if err := binary.Write(buf, binary.BigEndian, vel.Speed); err != nil {
-		return fmt.Errorf("failed to write speed: %w", err)
+	if err := binary.Write(buf, binary.BigEndian, vel.X); err != nil {
+		return fmt.Errorf("failed to write velocity X component: %w", err)
 	}
-	if err := binary.Write(buf, binary.BigEndian, vel.Direction); err != nil {
-		return fmt.Errorf("failed to write direction: %w", err)
+	if err := binary.Write(buf, binary.BigEndian, vel.Y); err != nil {
+		return fmt.Errorf("failed to write velocity Y component: %w", err)
 	}
 	return nil
 }
 
 // decodeVelocity decodes a Velocity struct from binary format.
-// Reads speed and direction values.
+// Reads the X and Y components of the velocity vector.
 func (c *TelemetryCodec) decodeVelocity(reader *bytes.Reader) (models.Velocity, error) {
-	var speed, direction float64
+	var x, y float64
 
-	if err := binary.Read(reader, binary.BigEndian, &speed); err != nil {
-		return models.Velocity{}, fmt.Errorf("failed to read speed: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &x); err != nil {
+		return models.Velocity{}, fmt.Errorf("failed to read velocity X component: %w", err)
 	}
-	if err := binary.Read(reader, binary.BigEndian, &direction); err != nil {
-		return models.Velocity{}, fmt.Errorf("failed to read direction: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &y); err != nil {
+		return models.Velocity{}, fmt.Errorf("failed to read velocity Y component: %w", err)
 	}
 
 	return models.Velocity{
-		Speed:     speed,
-		Direction: direction,
+		X: x,
+		Y: y,
 	}, nil
 }
 

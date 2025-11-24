@@ -1,3 +1,19 @@
+Uma das missões do rover poderia ser "capturar imagens", para isso seria necessário no nosso pacote
+mission update ter um field para armazenar as imagens que penso eu serão serializadas para isto ser possível
+logo no mission update teriamos de ter um field data []byte para conter os dados gerados
+assim sendo teriamos de ter um codec para esses dados, sem se quer me estar a referir ao codec necessário para
+serializar os dados para enviar na rede
+
+
+O que falta:
+- in-order delivery
+- mission failure on max duration timeout (in progress)
+- improved memory management and mutex usage in udp link (in progress)
+- improve logging capabilities and fix excess logging in udp link
+- implement observation api (HUGO E FRANCISCO ;-;)
+
+
+
 -----------------
 ------ Q1 -------
 No missionLink já temos:
@@ -24,6 +40,10 @@ t = 3s
     ["Dados obtidos no intervalo [0,1]", "Dados obtidos no intervalo [1,2]", "Dados obtidos no intervalo [2,3]"]
         (isto porque o sensor que fornece estes dados, fornece-os de segundo em segundo)
     o rover agora dependendo de como decidirmos pode concatenar este dados todos e envia-los num unico pacote Mission Update ou simplesmente mandar um MissionUpdate por string nesse buffer, neste caso mandar 3 mission updates
+
+Exemplo:
+Eu obtenho dados ambientais dos sensores de 2 em 2 segundos mas o Mission Update Frequency é de 10 segundos
+Entre cada update são obtidos dados ambientais distintos 5 vezes, no momento de enviar o update mandamos 5 pacotes MissionUpdate cada um com um conjunto de dados ambientais ou deve concatenar os 5 conjuntos de dados e enviar num único pacote ou ainda deve processar esses 5 conjuntos e fazer uma média do dados no intervalo? Qual é o preferível?
 
 -----------------
 ------ Q3 -------

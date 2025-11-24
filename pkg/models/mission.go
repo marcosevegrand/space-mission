@@ -9,7 +9,7 @@ import (
 // Sent by a rover to indicate it is ready for task assignment.
 type MissionRequest struct {
 	RoverID   uint16    // Unique identifier for the rover requesting a mission
-	Position  GeoPoint  // Current geographic location of the rover
+	Position  Point     // Current geographic location of the rover
 	Timestamp time.Time // Time when the request was generated
 }
 
@@ -17,10 +17,10 @@ func (m *MissionRequest) String() string {
 	return fmt.Sprintf(
 		"-- Mission Request --\n"+
 			"  Rover ID:    %03d\n"+
-			"  Position:    %v\n"+
+			"  Position:    (%.3f, %.3f)\n"+
 			"  Timestamp:   %s",
 		m.RoverID,
-		m.Position,
+		m.Position.X, m.Position.Y,
 		m.Timestamp.Format(time.RFC3339Nano),
 	)
 }
@@ -78,7 +78,7 @@ func (m *MissionUpdate) String() string {
 			"  Mission ID:    %03d\n"+
 			"  Status:        %s\n"+
 			"  Progress:      %03.2f%%\n"+
-			"  Data:          \"%.20s\"\n"+
+			"  Data:          %.38s\n"+
 			"  Timestamp:     %s",
 		m.RoverID,
 		m.MissionID,

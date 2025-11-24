@@ -54,7 +54,7 @@ var (
 
 	// DefaultFECConfig sets FEC fragment size to 512 bytes with a 10:3 data-to-parity ratio.
 	DefaultFECConfig = FECConfig{
-		FragmentSize:     512,
+		FragmentSize:     1500,
 		MinDataShards:    10,
 		ParityShardRatio: 0.3,
 	}
@@ -70,6 +70,6 @@ var (
 	NoFECConfig = Config{
 		Timeouts:       DefaultTimeoutConfig,
 		Retransmission: DefaultRetransmissionConfig,
-		FEC:            FECConfig{FragmentSize: 512, MinDataShards: 0, ParityShardRatio: 0},
+		FEC:            FECConfig{FragmentSize: 1500, MinDataShards: 0, ParityShardRatio: 0},
 	}
 )

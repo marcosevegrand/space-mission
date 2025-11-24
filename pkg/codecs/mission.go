@@ -222,7 +222,7 @@ func (c *MissionCodec) encodeRequest(msg *models.MissionRequest) ([]byte, error)
 	}
 
 	// Encode Position
-	if err := c.encodeGeoPoint(buf, msg.Position); err != nil {
+	if err := c.encodePoint(buf, msg.Position); err != nil {
 		return nil, fmt.Errorf("failed to encode position: %w", err)
 	}
 
@@ -246,7 +246,7 @@ func (c *MissionCodec) decodeRequest(reader *bytes.Reader) (models.MissionMessag
 	}
 
 	// Decode Position
-	position, err := c.decodeGeoPoint(reader)
+	position, err := c.decodePoint(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode position: %w", err)
 	}
@@ -363,37 +363,34 @@ func (c *MissionCodec) decodeUpdate(reader *bytes.Reader) (models.MissionMessage
 }
 
 // ============================================================================
-// Helper Functions for GeoPoint Encoding/Decoding
+// Helper Functions for Point Encoding/Decoding
 // ============================================================================
 
-// encodeGeoPoint encodes a GeoPoint struct into binary format.
-// Writes latitude and longitude from the GeoPoint location.
-func (c *MissionCodec) encodeGeoPoint(buf *bytes.Buffer, pos models.GeoPoint) error {
-	if err := binary.Write(buf, binary.BigEndian, pos.Latitude); err != nil {
-		return fmt.Errorf("failed to write latitude: %w", err)
+// encodePoint encodes a Point struct into binary format.
+// Writes the X and Y coordinates from the Point location.
+func (c *MissionCodec) encodePoint(buf *bytes.Buffer, pt models.Point) error {
+	if err := binary.Write(buf, binary.BigEndian, pt.X); err != nil {
+		return fmt.Errorf("failed to write X coordinate: %w", err)
 	}
-	if err := binary.Write(buf, binary.BigEndian, pos.Longitude); err != nil {
-		return fmt.Errorf("failed to write longitude: %w", err)
+	if err := binary.Write(buf, binary.BigEndian, pt.Y); err != nil {
+		return fmt.Errorf("failed to write Y coordinate: %w", err)
 	}
 	return nil
 }
 
-// decodeGeoPoint decodes a GeoPoint struct from binary format.
-// Reads latitude and longitude and creates a GeoPoint.
-func (c *MissionCodec) decodeGeoPoint(reader *bytes.Reader) (models.GeoPoint, error) {
-	var latitude, longitude float64
+// decodePoint decodes a Point struct from binary format.
+// Reads X and Y coordinates and creates a Point.
+func (c *MissionCodec) decodePoint(reader *bytes.Reader) (models.Point, error) {
+	var x, y float64
 
-	if err := binary.Read(reader, binary.BigEndian, &latitude); err != nil {
-		return models.GeoPoint{}, fmt.Errorf("failed to read latitude: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &x); err != nil {
+		return models.Point{}, fmt.Errorf("failed to read X coordinate: %w", err)
 	}
-	if err := binary.Read(reader, binary.BigEndian, &longitude); err != nil {
-		return models.GeoPoint{}, fmt.Errorf("failed to read longitude: %w", err)
+	if err := binary.Read(reader, binary.BigEndian, &y); err != nil {
+		return models.Point{}, fmt.Errorf("failed to read Y coordinate: %w", err)
 	}
 
-	return models.GeoPoint{
-		Latitude:  latitude,
-		Longitude: longitude,
-	}, nil
+	return models.Point{X: x, Y: y}, nil
 }
 
 // ============================================================================
@@ -411,32 +408,19 @@ func (c *MissionCodec) encodeGeographicArea(buf *bytes.Buffer, area models.Geogr
 	// Encode Coordinates based on shape type
 	switch coords := area.Coords.(type) {
 	case models.CoordsCircle:
-		// Write center latitude and longitude
-		if err := binary.Write(buf, binary.BigEndian, coords.Center.Latitude); err != nil {
-			return fmt.Errorf("failed to write circle center latitude: %w", err)
+		if err := c.encodePoint(buf, coords.Center); err != nil {
+			return fmt.Errorf("failed to write circle center: %w", err)
 		}
-		if err := binary.Write(buf, binary.BigEndian, coords.Center.Longitude); err != nil {
-			return fmt.Errorf("failed to write circle center longitude: %w", err)
-		}
-		// Write radius
 		if err := binary.Write(buf, binary.BigEndian, coords.Radius); err != nil {
 			return fmt.Errorf("failed to write circle radius: %w", err)
 		}
 
 	case models.CoordsRectangle:
-		// Write TopLeft latitude and longitude
-		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft.Latitude); err != nil {
-			return fmt.Errorf("failed to write rectangle top-left latitude: %w", err)
+		if err := c.encodePoint(buf, coords.TopLeft); err != nil {
+			return fmt.Errorf("failed to write rectangle top-left point: %w", err)
 		}
-		if err := binary.Write(buf, binary.BigEndian, coords.TopLeft.Longitude); err != nil {
-			return fmt.Errorf("failed to write rectangle top-left longitude: %w", err)
-		}
-		// Write BottomRight latitude and longitude
-		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight.Latitude); err != nil {
-			return fmt.Errorf("failed to write rectangle bottom-right latitude: %w", err)
-		}
-		if err := binary.Write(buf, binary.BigEndian, coords.BottomRight.Longitude); err != nil {
-			return fmt.Errorf("failed to write rectangle bottom-right longitude: %w", err)
+		if err := c.encodePoint(buf, coords.BottomRight); err != nil {
+			return fmt.Errorf("failed to write rectangle bottom-right point: %w", err)
 		}
 
 	default:
@@ -457,55 +441,42 @@ func (c *MissionCodec) decodeGeographicArea(reader *bytes.Reader) (models.Geogra
 	}
 
 	var coords models.Coordinates
+	var err error
 
 	// Decode Coordinates based on shape type
 	switch models.Shape(shape) {
 	case models.ShapeCircle:
-		var centerLat, centerLon, radius float64
+		var center models.Point
+		var radius float64
 
-		if err := binary.Read(reader, binary.BigEndian, &centerLat); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read circle center latitude: %w", err)
+		center, err = c.decodePoint(reader)
+		if err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read circle center: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &centerLon); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read circle center longitude: %w", err)
-		}
-		if err := binary.Read(reader, binary.BigEndian, &radius); err != nil {
+		if err = binary.Read(reader, binary.BigEndian, &radius); err != nil {
 			return models.GeographicArea{}, fmt.Errorf("failed to read circle radius: %w", err)
 		}
 
 		coords = models.CoordsCircle{
-			Center: models.GeoPoint{
-				Latitude:  centerLat,
-				Longitude: centerLon,
-			},
+			Center: center,
 			Radius: radius,
 		}
 
 	case models.ShapeRectangle:
-		var topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64
+		var topLeft, bottomRight models.Point
 
-		if err := binary.Read(reader, binary.BigEndian, &topLeftLat); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left latitude: %w", err)
+		topLeft, err = c.decodePoint(reader)
+		if err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left point: %w", err)
 		}
-		if err := binary.Read(reader, binary.BigEndian, &topLeftLon); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle top-left longitude: %w", err)
-		}
-		if err := binary.Read(reader, binary.BigEndian, &bottomRightLat); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right latitude: %w", err)
-		}
-		if err := binary.Read(reader, binary.BigEndian, &bottomRightLon); err != nil {
-			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right longitude: %w", err)
+		bottomRight, err = c.decodePoint(reader)
+		if err != nil {
+			return models.GeographicArea{}, fmt.Errorf("failed to read rectangle bottom-right point: %w", err)
 		}
 
 		coords = models.CoordsRectangle{
-			TopLeft: models.GeoPoint{
-				Latitude:  topLeftLat,
-				Longitude: topLeftLon,
-			},
-			BottomRight: models.GeoPoint{
-				Latitude:  bottomRightLat,
-				Longitude: bottomRightLon,
-			},
+			TopLeft:     topLeft,
+			BottomRight: bottomRight,
 		}
 
 	default:

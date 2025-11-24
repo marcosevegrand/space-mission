@@ -6,7 +6,7 @@ package interfaces
 type Source[T any] func() (T, error)
 
 // Encoder is a function type that converts a typed data structure into bytes
-// Used by clients or peersto serialize data before sending
+// Used by clients or peers to serialize data before sending
 type Encoder[T any] func(T) ([]byte, error)
 
 // Decoder is a function type that converts raw bytes into a typed data structure

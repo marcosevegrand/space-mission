@@ -2,28 +2,38 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
 	"space-mission/internal/rover"
+	"syscall"
 	"time"
 )
 
 func main() {
 	r, err := rover.NewRover(
-		1,
-		50*time.Millisecond,
-		5*time.Second,
+		2,
 		"localhost:8001",
-		"localhost:9002",
+		"localhost:9003",
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := r.Start(3*time.Second, "localhost:9001"); err != nil {
+	if err := r.Start(5*time.Second, 5*time.Second, "localhost:9001"); err != nil {
 		log.Fatal(err)
 	}
 
-	c := make(chan struct{})
+	// Create a channel to listen for interrupt (Ctrl+C)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	<-c
-	log.Println("Mothership stopped")
+	// Wait for an interrupt signal
+	<-sigChan
+
+	// Signal received, call r.Stop()
+	if err := r.Stop(); err != nil {
+		log.Printf("Error stopping rover: %v", err)
+	} else {
+		log.Println("Rover stopped successfully.")
+	}
 }
