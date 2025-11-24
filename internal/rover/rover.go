@@ -70,7 +70,7 @@ func (r *Rover) missionHandler(msg models.MissionMessage, senderAddr string) err
 	switch msg := msg.(type) {
 	case *models.MissionAssignment:
 		// Temporary print for debugging
-		fmt.Println(msg)
+		// fmt.Println(msg)
 
 		updateFrequency := msg.UpdateFrequency
 		r.ce.SetMissionAssignment(msg)

@@ -45,7 +45,13 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 
 func (m *Mothership) AddMissionAssignment(assignment *models.MissionAssignment) error {
 
-	_, loaded := m.missionAssignments.LoadOrStore(assignment.MissionID, safe.NewVar(*assignment))
+	_, loaded := m.missionAssignments.LoadOrCompute(
+		assignment.MissionID,
+
+		func() (*safe.Var[models.MissionAssignment], bool) {
+			return safe.NewVar(*assignment), false
+		},
+	)
 
 	if loaded {
 		return nil
