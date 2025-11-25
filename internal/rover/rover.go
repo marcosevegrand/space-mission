@@ -14,10 +14,10 @@ import (
 )
 
 type Rover struct {
-	id uint16
-	ce *ComputeElement
-	ts *tcpstream.Client[*models.Telemetry]
-	ml *udplink.Peer[models.MissionMessage]
+	roverID         uint16
+	computeElement  *ComputeElement
+	telemetryStream *tcpstream.Client[*models.Telemetry]
+	missionLink     *udplink.Peer[models.MissionMessage]
 
 	running  *safe.Var[bool]
 	stopChan chan struct{}
@@ -25,16 +25,16 @@ type Rover struct {
 }
 
 func NewRover(
-	id uint16, // rover id
+	roverID uint16, // rover id
 	mothershipStreamAddr string, // mothership tcp address
 	roverLinkAddr string, // rover udp address
 ) (*Rover, error) {
 
 	r := &Rover{
-		id:       id,
-		ce:       NewComputeElement(id),
-		running:  safe.NewVar(false),
-		stopChan: make(chan struct{}),
+		roverID:        roverID,
+		computeElement: NewComputeElement(roverID),
+		running:        safe.NewVar(false),
+		stopChan:       make(chan struct{}),
 	}
 
 	telemetryStream, err := tcpstream.NewClient(
@@ -47,7 +47,7 @@ func NewRover(
 	if err != nil {
 		return nil, err
 	}
-	r.ts = telemetryStream
+	r.telemetryStream = telemetryStream
 
 	missionLink, err := udplink.NewPeer(
 		roverLinkAddr,
@@ -60,7 +60,7 @@ func NewRover(
 	if err != nil {
 		return nil, err
 	}
-	r.ml = missionLink
+	r.missionLink = missionLink
 
 	return r, nil
 }
@@ -73,8 +73,8 @@ func (r *Rover) missionHandler(msg models.MissionMessage, senderAddr string) err
 		// fmt.Println(msg)
 
 		updateFrequency := msg.UpdateFrequency
-		r.ce.SetMissionAssignment(msg)
-		err := r.ce.StartMission()
+		r.computeElement.SetMissionAssignment(msg)
+		err := r.computeElement.StartMission()
 		if err != nil {
 			return fmt.Errorf("failed to start mission: %v", err)
 		}
@@ -111,11 +111,11 @@ func (r *Rover) missionRequestLoop(frequency time.Duration, addr string) error {
 		case <-r.stopChan:
 			return nil
 		case <-tick.C:
-			request, skip := r.ce.GetMissionRequest()
+			request, skip := r.computeElement.GetMissionRequest()
 			if skip {
 				continue
 			}
-			err := r.ml.Send(&request, addr)
+			err := r.missionLink.Send(&request, addr)
 			if err != nil {
 				log.Printf("failed to send mission request: %v", err)
 			}
@@ -147,14 +147,14 @@ func (r *Rover) missionUpdateLoop(frequency time.Duration, addr string) error {
 		case <-r.stopChan:
 			return nil
 		case <-tick.C:
-			updates, stop := r.ce.GetMissionUpdates()
+			updates, stop := r.computeElement.GetMissionUpdates()
 
 			if stop {
 				return nil
 			}
 
 			for node := range updates.Nodes() {
-				err := r.ml.Send(&node.Value, addr)
+				err := r.missionLink.Send(&node.Value, addr)
 				if err != nil {
 					log.Printf("failed to send mission update: %v", err)
 				}
@@ -173,36 +173,32 @@ func (r *Rover) Start(
 	}
 	r.running.Set(true)
 
-	err := r.ce.Start()
+	err := r.computeElement.Start()
 	if err != nil {
 		return err
 	}
-	fmt.Println("[COMPUTE ELEMENT STARTED]")
+	fmt.Println("[START] COMPUTE ELEMENT")
 
-	err = r.ts.Connect()
+	err = r.telemetryStream.Connect()
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("[TCP CONNECTION ESTABLISHED]")
-
-	err = r.ts.StartStream(r.ce.GetTelemetry, telemetryUpdateFrequency)
+	err = r.telemetryStream.StartStream(r.computeElement.GetTelemetry, telemetryUpdateFrequency)
 	if err != nil {
 		return err
 	}
-	fmt.Println("[TELEMETRY STREAM STARTED]")
+	fmt.Println("[START] TELEMETRY STREAM")
 
-	err = r.ml.Start()
+	err = r.missionLink.Start()
 	if err != nil {
 		return err
 	}
-	fmt.Println("[UDP LISTENER STARTED]")
+	fmt.Println("[START] MISSION LINK")
 
 	err = r.sendMissionRequests(missionRequestFrequency, missionRemoteAddr)
 	if err != nil {
 		return err
 	}
-	fmt.Println("[MISSION REQUEST STREAM STARTED]")
 
 	return nil
 }
@@ -214,10 +210,18 @@ func (r *Rover) Stop() error {
 	r.running.Set(false)
 
 	close(r.stopChan)
-	r.ml.Stop()
-	r.ts.Stop()
-	r.ce.Stop()
+
+	r.missionLink.Stop()
+	fmt.Println("[STOP] MISSION LINK")
+
+	r.telemetryStream.Stop()
+	fmt.Println("[STOP] TELEMETRY STREAM")
+
+	r.computeElement.Stop()
+	fmt.Println("[STOP] COMPUTE ELEMENT")
+
 	r.wg.Wait()
+	fmt.Println("[STOP] ROVER")
 
 	return nil
 }

@@ -4,6 +4,10 @@ package udplink
 
 import "time"
 
+const (
+	DefaultLoopTick = 50 * time.Millisecond
+)
+
 // FECConfig holds parameters for Forward Error Correction.
 // The ratio of parity shards determines redundancy. Shard counts for each
 // message are calculated dynamically based on this ratio and the message size.
@@ -26,6 +30,7 @@ type TimeoutConfig struct {
 	Read    time.Duration // The deadline for network read operations.
 	Write   time.Duration // The deadline for network write operations.
 	RecvTTL time.Duration // Time-to-live for incomplete packets on the receiver side before cleanup.
+	InOrder time.Duration // Time to wait for expected sequence numbers before incrementing it.
 }
 
 // Config is the master configuration for a Peer.
@@ -43,6 +48,7 @@ var (
 		Read:    3 * time.Second,
 		Write:   3 * time.Second,
 		RecvTTL: 1 * time.Second,
+		InOrder: 2 * time.Second,
 	}
 
 	// DefaultRetransmissionConfig provides standard settings for retransmissions.

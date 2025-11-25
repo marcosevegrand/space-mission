@@ -8,12 +8,13 @@ import (
 func (p *Peer[T]) retransmissionLoop() {
 	defer p.wg.Done()
 	// A fast ticker to check for expired backoffs frequently.
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(DefaultLoopTick)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-p.stopChan:
+			p.lf.Write("[EVENT] Retransmission loop stopped")
 			return
 		case <-ticker.C:
 			p.checkRetransmissions()
@@ -29,6 +30,7 @@ func (p *Peer[T]) checkRetransmissions() {
 			packet.txMu.Lock()
 			// Check if the packet is ready for retransmission.
 			if packet.lastTransmission.IsZero() || time.Since(packet.lastTransmission) < packet.currentBackoff {
+				packet.txMu.Unlock()
 				return true // Not time to retransmit this packet yet.
 			}
 			// Check for timeout failure.

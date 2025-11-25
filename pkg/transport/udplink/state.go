@@ -54,6 +54,16 @@ type receivedPacketKey struct {
 // payload wraps a fully reassembled payload with its sequence number
 // to facilitate in-order delivery to the handler.
 type payload struct {
-	seqNum  uint32
-	payload []byte
+	seqNum uint32
+	bytes  []byte
+}
+
+func CmpSeqNum(a, b payload) int {
+	if a.seqNum < b.seqNum {
+		return -1
+	}
+	if a.seqNum > b.seqNum {
+		return 1
+	}
+	return 0
 }

@@ -6,12 +6,13 @@ import "time"
 func (p *Peer[T]) cleanupLoop() {
 	defer p.wg.Done()
 
-	ticker := time.NewTicker(p.config.Timeouts.RecvTTL)
+	ticker := time.NewTicker(DefaultLoopTick)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-p.stopChan:
+			p.lf.Write("[EVENT] Cleanup loop stopped")
 			return
 		case <-ticker.C:
 			p.performCleanup()

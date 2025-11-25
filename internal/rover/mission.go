@@ -9,15 +9,13 @@ import (
 
 func (c *ComputeElement) executeMission() (end bool, err error) {
 
-	var status models.MissionStatus
-	var task models.Task
+	var assignment models.MissionAssignment
 	var currentPosition models.Point
 	var targetPosition models.Point
 
 	c.mission.View(
 		func(val *missionVars) {
-			status = val.assignment.Status
-			task = val.assignment.Task
+			assignment = val.assignment
 		},
 	)
 	c.spatial.View(
@@ -27,7 +25,7 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 		},
 	)
 
-	switch status {
+	switch assignment.Status {
 	case models.MissionAssigned:
 
 		c.mission.Edit(
@@ -37,6 +35,15 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 				targetPosition, _ = val.path.PopFront()
 				val.assignment.Status = models.MissionInProgress
 				val.startTime = time.Now()
+				update := models.MissionUpdate{
+					RoverID:   c.roverID,
+					MissionID: val.assignment.MissionID,
+					Status:    val.assignment.Status,
+					Progress:  val.assignment.Progress,
+					Data:      "[MISSION STARTED]",
+					Timestamp: time.Now(),
+				}
+				val.updateBuf.PushBack(update)
 			},
 		)
 		c.spatial.Edit(
@@ -44,40 +51,70 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 				val.targetPosition = targetPosition
 			},
 		)
+
 		return false, nil
 
 	case models.MissionInProgress:
 
-		c.mission.View(
+		// Check if mission has timed out
+		c.mission.Edit(
 			func(val *missionVars) {
 				deadline := val.startTime.Add(val.assignment.MaxDuration)
 				if time.Now().After(deadline) {
-					val.dataBuf.PushBack("[MISSION FAILURE: MAX DURATION EXCEEDED]")
 					val.assignment.Status = models.MissionFailed
+					update := models.MissionUpdate{
+						RoverID:   c.roverID,
+						MissionID: val.assignment.MissionID,
+						Status:    val.assignment.Status,
+						Progress:  val.assignment.Progress,
+						Data:      "[MISSION FAILURE: MAX DURATION EXCEEDED]",
+						Timestamp: time.Now(),
+					}
+					val.updateBuf.PushBack(update)
+					end = true
 				}
 			},
 		)
+		if end {
+			return end, nil // we opt for not treating mission timeout as an error
+		}
 
 		if geo.EqualPoints(currentPosition, targetPosition) {
-			data, err := c.executeTask(task, currentPosition)
+			data, err := c.executeTask(assignment.Task, currentPosition)
 			if err != nil {
 				c.mission.Edit(
 					func(val *missionVars) {
-						val.dataBuf.PushBack("[MISSION FAILURE: FAILED TO EXECUTE TASK]")
 						val.assignment.Status = models.MissionFailed
+						update := models.MissionUpdate{
+							RoverID:   c.roverID,
+							MissionID: val.assignment.MissionID,
+							Status:    val.assignment.Status,
+							Progress:  val.assignment.Progress,
+							Data:      "[MISSION FAILURE: FAILED TO EXECUTE TASK]",
+							Timestamp: time.Now(),
+						}
+						val.updateBuf.PushBack(update)
 					},
 				)
-				return true, fmt.Errorf("failed to execute mission: %v", err)
+				return true, fmt.Errorf("failed to execute mission task: %v", err)
 			}
 			c.mission.Edit(
 				func(val *missionVars) {
-					val.dataBuf.PushBack(data)
 					val.assignment.Progress += val.progressRate
 					if val.assignment.Progress >= 100 {
 						val.assignment.Progress = 100
 						val.assignment.Status = models.MissionCompleted
 						end = true
 					}
+					update := models.MissionUpdate{
+						RoverID:   c.roverID,
+						MissionID: val.assignment.MissionID,
+						Status:    val.assignment.Status,
+						Progress:  val.assignment.Progress,
+						Data:      data,
+						Timestamp: time.Now(),
+					}
+					val.updateBuf.PushBack(update)
 				},
 			)
 			if end {

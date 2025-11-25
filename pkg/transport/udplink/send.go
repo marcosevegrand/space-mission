@@ -21,6 +21,8 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 		return fmt.Errorf("failed to resolve address %s: %w", addrStr, err)
 	}
 
+	p.lf.Write("[SEND] to %s | %v", destAddr.String(), data)
+
 	payload, err := p.encoder(data)
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
@@ -81,7 +83,7 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 
 	p.sentPackets.Store(seqNum, pkt)
 
-	for i, shard := range pkt.fragments {
+	for i, shard := range shards {
 		isFEC := i >= dataShards
 		fragmentBytes := BuildDataFragment(seqNum, uint16(i), uint16(dataShards), uint16(parityShards), isFEC, shard)
 		pkt.fragments[i] = fragmentBytes

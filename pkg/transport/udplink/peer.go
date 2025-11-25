@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"space-mission/pkg/interfaces"
 	"space-mission/pkg/logfile"
@@ -32,8 +33,9 @@ type Peer[T any] struct {
 	nextSeqNum     *safe.Var[uint32]
 	sentPackets    *xsync.Map[uint32, *sentPacket]
 	recvPackets    *xsync.Map[receivedPacketKey, *receivedPacket]
-	recvBuffer     *xsync.Map[string, *safe.List[payload]]
-	expectedSeqNum map[string]uint32 // not subject to concurrency
+	recvQueue      *xsync.Map[string, *safe.List[payload]]
+	expectedSeqNum map[string]uint32    // <-| not subject to concurrency
+	missingSince   map[string]time.Time // <-/
 
 	// Goroutine lifecycle management
 	workers  *pool.WorkerPool
@@ -92,8 +94,9 @@ func NewPeer[T any](
 		nextSeqNum:     safe.NewVar[uint32](1),
 		sentPackets:    xsync.NewMap[uint32, *sentPacket](),
 		recvPackets:    xsync.NewMap[receivedPacketKey, *receivedPacket](),
-		recvBuffer:     xsync.NewMap[string, *safe.List[payload]](),
+		recvQueue:      xsync.NewMap[string, *safe.List[payload]](),
 		expectedSeqNum: make(map[string]uint32),
+		missingSince:   make(map[string]time.Time),
 		workers:        pool.NewWorkerPool(config.MaxWorkers),
 		running:        safe.NewVar(false),
 		stopChan:       make(chan struct{}),
@@ -121,8 +124,9 @@ func (p *Peer[T]) Start() error {
 
 	p.lf.Write("[EVENT] Peer started on %s", p.addr)
 
-	p.wg.Add(3) // All three goroutines are mandatory for operation
+	p.wg.Add(4) // All three goroutines are mandatory for operation
 	go p.receiveLoop()
+	go p.deliveryLoop()
 	go p.cleanupLoop()
 	go p.retransmissionLoop()
 
@@ -142,7 +146,9 @@ func (p *Peer[T]) Stop() error {
 	}
 
 	p.wg.Wait()
-
 	p.lf.Write("[EVENT] Peer stopped")
+
+	p.lf.Close()
+
 	return p.lf.Close()
 }

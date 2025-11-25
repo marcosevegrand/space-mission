@@ -16,6 +16,7 @@ func (p *Peer[T]) receiveLoop() {
 	for {
 		select {
 		case <-p.stopChan:
+			p.lf.Write("[EVENT] Listener loop stopped")
 			return
 		default:
 		}
@@ -29,7 +30,8 @@ func (p *Peer[T]) receiveLoop() {
 				continue // Expected timeout, continue the loop.
 			}
 			p.lf.Write("[ERROR] ReadFromUDP failed: %v", err)
-			continue
+			p.lf.Write("[EVENT] Listener loop stopped")
+			return
 		}
 
 		fragmentBytes := make([]byte, n)

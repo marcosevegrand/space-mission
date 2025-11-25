@@ -5,50 +5,123 @@ import (
 	"sync"
 )
 
+// Comparator function type:
+// Returns < 0 if a < b
+// Returns 0 if a == b
+// Returns > 0 if a > b
+type Comparator[T any] func(a, b T) int
+
 // Node represents an element in the linked list.
-// It is exported so users can hold a reference to it for removal.
 type Node[T any] struct {
 	Value T
 	next  *Node[T]
 	prev  *Node[T]
-	list  *List[T] // Used to verify the node belongs to this list
+	list  *List[T]
 }
 
 // List is a generic, thread-safe Doubly Linked List.
-// It uses a RWMutex to allow multiple readers or a single writer.
 type List[T any] struct {
 	mu   sync.RWMutex
 	head *Node[T]
 	tail *Node[T]
 	size int
+	cmp  Comparator[T] // Helper function for sorting
 }
 
-// NewList creates and returns a pointer to a new, empty List.
-func NewList[T any]() *List[T] {
-	return &List[T]{
+// NewList creates and returns a pointer to a new List.
+// You can optionally pass a comparator function if you intend to use AddInOrder.
+// Usage: safe.NewList[int](func(a, b int) int { return a - b })
+func NewList[T any](cmp ...Comparator[T]) *List[T] {
+	l := &List[T]{
 		head: nil,
 		tail: nil,
 		size: 0,
 	}
+	if len(cmp) > 0 {
+		l.cmp = cmp[0]
+	}
+	return l
 }
 
-// PushBack adds an element to the end of the list (formerly Enqueue).
-// It returns the pointer to the created Node, which can be used to Remove it later.
+// AddInOrder adds an element to the list in the position determined by the comparator.
+// The list must have been initialized with a comparator function, or this will panic.
+func (l *List[T]) AddInOrder(elem T) *Node[T] {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.cmp == nil {
+		panic("AddInOrder called on a List without a defined comparator")
+	}
+
+	newNode := &Node[T]{
+		Value: elem,
+		list:  l,
+	}
+
+	// Case 1: List is empty
+	if l.head == nil {
+		l.head = newNode
+		l.tail = newNode
+		l.size++
+		return newNode
+	}
+
+	// Case 2: New element is smaller than Head (Insert at Front)
+	if l.cmp(elem, l.head.Value) < 0 {
+		newNode.next = l.head
+		l.head.prev = newNode
+		l.head = newNode
+		l.size++
+		return newNode
+	}
+
+	// Case 3: New element is greater or equal to Tail (Insert at Back)
+	// Optimization: Checking tail avoids iterating the whole list for sequential adds.
+	if l.cmp(elem, l.tail.Value) >= 0 {
+		newNode.prev = l.tail
+		l.tail.next = newNode
+		l.tail = newNode
+		l.size++
+		return newNode
+	}
+
+	// Case 4: Insert somewhere in the middle
+	// Iterate to find the first node that is greater than our element
+	curr := l.head
+	for curr != nil {
+		if l.cmp(elem, curr.Value) < 0 {
+			// Insert before 'curr'
+			newNode.prev = curr.prev
+			newNode.next = curr
+
+			// Update the neighbors
+			curr.prev.next = newNode
+			curr.prev = newNode
+
+			l.size++
+			return newNode
+		}
+		curr = curr.next
+	}
+
+	// Should not be reachable due to the Tail check, but strictly safe return:
+	return newNode
+}
+
+// PushBack adds an element to the end of the list.
 func (l *List[T]) PushBack(elem T) *Node[T] {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	newNode := &Node[T]{
 		Value: elem,
-		list:  l, // Associate node with this list
+		list:  l,
 	}
 
 	if l.tail == nil {
-		// List is empty
 		l.head = newNode
 		l.tail = newNode
 	} else {
-		// Link old tail to new node
 		l.tail.next = newNode
 		newNode.prev = l.tail
 		l.tail = newNode
@@ -79,7 +152,7 @@ func (l *List[T]) PushFront(elem T) *Node[T] {
 	return newNode
 }
 
-// PopFront removes and returns the element from the start (formerly Dequeue).
+// PopFront removes and returns the element from the start.
 func (l *List[T]) PopFront() (T, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -89,7 +162,6 @@ func (l *List[T]) PopFront() (T, error) {
 		return zero, fmt.Errorf("list is empty")
 	}
 
-	// Remove the head node
 	nodeToRemove := l.head
 	val := nodeToRemove.Value
 
@@ -97,14 +169,11 @@ func (l *List[T]) PopFront() (T, error) {
 	l.size--
 
 	if l.head == nil {
-		// List is now empty
 		l.tail = nil
 	} else {
-		// Clear the prev pointer of the new head
 		l.head.prev = nil
 	}
 
-	// Cleanup the removed node to prevent memory leaks and invalidated reuse
 	nodeToRemove.next = nil
 	nodeToRemove.prev = nil
 	nodeToRemove.list = nil
@@ -112,47 +181,38 @@ func (l *List[T]) PopFront() (T, error) {
 	return val, nil
 }
 
-// Remove deletes a specific node from the list in
-// O(1) time and returns its value.
-//
-// Safe to call even if the node was already removed by another thread.
+// Remove deletes a specific node from the list in O(1).
 func (l *List[T]) Remove(n *Node[T]) (T, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	var zero T
 
-	// 1. Validation
-	// If n.list is nil, it means it was already removed.
-	// If n.list != l, it belongs to a different list.
 	if n == nil || n.list != l {
 		return zero, fmt.Errorf("node is not part of this list")
 	}
 
-	// 2. Handle Head
 	if n == l.head {
 		l.head = n.next
 	} else {
 		n.prev.next = n.next
 	}
 
-	// 3. Handle Tail
 	if n == l.tail {
 		l.tail = n.prev
 	} else {
 		n.next.prev = n.prev
 	}
 
-	// 4. Cleanup
 	n.next = nil
 	n.prev = nil
-	n.list = nil // Crucial: marks node as "removed"
+	n.list = nil
 	l.size--
 
 	return n.Value, nil
 }
 
-// Front returns the element at the start without removing it (formerly Peek).
+// Front returns the element at the start without removing it.
 func (l *List[T]) Front() (T, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -192,7 +252,6 @@ func (l *List[T]) Clear() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Optional: Walk and clear all pointers to help GC
 	curr := l.head
 	for curr != nil {
 		next := curr.next
@@ -207,11 +266,8 @@ func (l *List[T]) Clear() {
 	l.size = 0
 }
 
-// Values returns an iterator for the data stored in the list.
-// Note: This creates a snapshot (slice) of data to allow safe iteration
-// without holding the lock for the duration of the loop.
+// Values returns an iterator for the data.
 func (l *List[T]) Values() func(yield func(T) bool) {
-	// 1. Create Snapshot under Read Lock
 	l.mu.RLock()
 	snapshot := make([]T, 0, l.size)
 	for n := l.head; n != nil; n = n.next {
@@ -219,7 +275,6 @@ func (l *List[T]) Values() func(yield func(T) bool) {
 	}
 	l.mu.RUnlock()
 
-	// 2. Iterate Snapshot
 	return func(yield func(T) bool) {
 		for _, v := range snapshot {
 			if !yield(v) {
@@ -230,11 +285,7 @@ func (l *List[T]) Values() func(yield func(T) bool) {
 }
 
 // Nodes returns an iterator for the internal Node pointers.
-// Note: This creates a snapshot of pointers.
-// It is safe to call other methods inside this loop because
-// the lock is released before the loop starts.
 func (l *List[T]) Nodes() func(yield func(*Node[T]) bool) {
-	// 1. Create Snapshot under Read Lock
 	l.mu.RLock()
 	snapshot := make([]*Node[T], 0, l.size)
 	for n := l.head; n != nil; n = n.next {
@@ -242,13 +293,8 @@ func (l *List[T]) Nodes() func(yield func(*Node[T]) bool) {
 	}
 	l.mu.RUnlock()
 
-	// 2. Iterate Snapshot
 	return func(yield func(*Node[T]) bool) {
 		for _, n := range snapshot {
-			// We check n.list just in case it was removed by another thread
-			// while we were iterating previous elements.
-			// However, strictly speaking, yield(n) is still safe because
-			// Remove(n) handles the validation check.
 			if !yield(n) {
 				return
 			}

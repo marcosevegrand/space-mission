@@ -123,7 +123,9 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 	if packet.fecEncoder != nil {
 		err := packet.fecEncoder.Reconstruct(packet.shards)
 		if err != nil {
-			p.lf.Write("[WARN] Reconstruction for seq %d failed despite having enough shards (%d/%d): %v", f.seqNum, pkt.numFragsRecv, pkt.dataShards, err)
+			p.lf.Write("[WARN] Reconstruction for seq %d failed despite having enough shards (%d/%d): %v",
+				f.seqNum, packet.numFragsRecv, packet.dataShards, err)
+			packet.mu.Unlock()
 			return nil
 		}
 	}
@@ -133,6 +135,7 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 	for i := 0; i < packet.dataShards; i++ {
 		shard := packet.shards[i]
 		if shard == nil {
+			packet.mu.Unlock()
 			return fmt.Errorf("reconstruction error: data shard %d is missing for seq %d", i, f.seqNum)
 		}
 		fullPayload = append(fullPayload, shard...)
@@ -141,17 +144,35 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 	packet.mu.Unlock()
 
 	// here instead of immediately decoding and forwarding the data to the app level
-	// we place the data on a queue to ensure in order delivery
-	data, _ := p.decoder(fullPayload)
-	p.lf.Write("[DECODED] %v", data)
-	packetQueue, _ := p.recvBuffer.LoadOrCompute(
+	// we place the payload on a queue to ensure in order delivery
+
+	// DEBUG
+	// Decode and Handle
+	// data, err := p.decoder(fullPayload)
+	// p.lf.Write("[DECODED] %v", data)
+	// if err != nil {
+	// 	p.lf.Write("[ERROR] Failed to decode seq %d: %v", f.seqNum, err)
+	// 	return err
+	// }
+
+	// p.lf.Write("[DELIVERED] seq %d from %s", f.seqNum, senderAddr)
+
+	// // Hand off to application
+	// go p.handler(data, senderAddr)
+
+	packetQueue, _ := p.recvQueue.LoadOrCompute(
 		addr.String(),
 		func() (*safe.List[payload], bool) {
-			queue := safe.NewList[payload]()
-			return queue, true
+			queue := safe.NewList(CmpSeqNum)
+			return queue, false
 		},
 	)
-	packetQueue.AddInOrder(data)
+
+	payload := payload{
+		seqNum: f.seqNum,
+		bytes:  fullPayload,
+	}
+	packetQueue.AddInOrder(payload)
 
 	return nil
 }
