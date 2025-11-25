@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ground Control - Mission Commander</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
     <div class="container">
@@ -12,16 +12,8 @@
         <header class="header">
             <div class="header-content">
                 <a href="missoes.html" class="btn-secondary">Ver lista de Missões</a>
-                <div class="logo-section">
-                    <h1 class="title">🛰️ GROUND CONTROL</h1>
-                    <p class="subtitle">Mission Commander - Real-time Rover Monitoring</p>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span id="connectionStatus" class="status-indicator"></span>
-                    <span id="connectionText" class="status-text"></span>
-                    <input type="text" id="apiUrl" value="http://localhost:8080" />
-                    <button id="connectBtn">Conectar</button>
-                </div>
+                <h1 class="title">🛰️ GROUND CONTROL</h1>
+                <p class="subtitle">Mission Commander - Real-time Rover Monitoring</p>
             </div>
         </header>
 
@@ -68,20 +60,6 @@
                 <div class="panel panel-large">
                     <h2 class="panel-title">MISSION MAP</h2>
                     <canvas id="mapCanvas" class="map-canvas"></canvas>
-                    <div class="map-legend">
-                        <div class="legend-item">
-                            <div class="legend-box rover"></div>
-                            <span>Rover Position</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-box mission"></div>
-                            <span>Mission Target</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-box path"></div>
-                            <span>Rover Path</span>
-                        </div>
-                    </div>
                 </div>
             </section>
 
@@ -103,6 +81,6 @@
         </footer>
     </div>
 
-    <script src="app.js"></script>
+    <script src="static/app.js"></script>
 </body>
 </html>
