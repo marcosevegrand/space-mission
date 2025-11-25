@@ -6,15 +6,16 @@ serializar os dados para enviar na rede
 
 
 O que falta:
-- in-order delivery [PENDING]
-- improved memory management and mutex usage in udp link [PENDING]
-- limit number of go routines for fragment handling [PENDING]
+- implementar os testes para cada componente do projeto [PENDING]
+- escrever o relatório todo direitinho (de preferencia em latex) [PENDING]
 - groundControl send missions to mothership from config files [PENDING]
-- implement observation api [HUGO E FRANCISCO ;-;]
+- implement observation api (meter a mrd do site a funcionar direito, tudo organizado) [HUGO E FRANCISCO ;-;]
 
-- improve logging capabilities and fix excess logging in udp link [PARTIALLY DONE]
+- improved memory management and mutex usage in udp link [COMPLETED]
+- limit number of go routines for fragment handling [COMPLETED]
+- improve logging capabilities and fix excess logging in udp link [COMPLETED]
 - mission failure on max duration timeout [COMPLETED]
-
+- in-order delivery [COMPLETED]
 
 
 

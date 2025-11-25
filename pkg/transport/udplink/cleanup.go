@@ -27,6 +27,14 @@ func (p *Peer[T]) performCleanup() {
 
 	p.recvPackets.Range(
 		func(key receivedPacketKey, packet *receivedPacket) bool {
+
+			// If the peer is stopping, abort the entire loop immediately.
+			select {
+			case <-p.stopChan:
+				return false // Stop iterating the map
+			default:
+			}
+
 			packet.mu.Lock()
 			if now.Sub(packet.lastUpdated) > recvTTL {
 				p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)

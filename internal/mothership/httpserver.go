@@ -5,9 +5,12 @@ import (
 )
 
 func (m *Mothership) StartHTTPServer(addr string) error {
-	http.HandleFunc("/", m.HandleIndex)
-	http.HandleFunc("/api/rovers", m.HandleGetRovers)
-	http.HandleFunc("/api/missions", m.HandleGetMissions)
-	http.Handle("/static/", m.HandleStatic())
-	return http.ListenAndServe(addr, nil)
+	// Create a new router (Mux)
+	mux := http.NewServeMux()
+
+	// Apply the routes defined in your RegisterRoutes function
+	m.RegisterRoutes(mux)
+
+	// Start the server using this specific mux
+	return http.ListenAndServe(addr, mux)
 }

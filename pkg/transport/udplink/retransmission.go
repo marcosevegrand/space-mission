@@ -27,6 +27,13 @@ func (p *Peer[T]) checkRetransmissions() {
 	p.sentPackets.Range(
 		func(seqNum uint32, packet *sentPacket) bool {
 
+			// If the peer is stopping, abort the entire loop immediately.
+			select {
+			case <-p.stopChan:
+				return false // Stop iterating the map
+			default:
+			}
+
 			packet.txMu.Lock()
 			// Check if the packet is ready for retransmission.
 			if packet.lastTransmission.IsZero() || time.Since(packet.lastTransmission) < packet.currentBackoff {

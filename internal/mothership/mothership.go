@@ -90,7 +90,7 @@ func (m *Mothership) Start() error {
 	}
 	fmt.Println("[START] MISSION LINK")
 
-	// go m.StartHTTPServer("localhost:8080")
+	go m.StartHTTPServer("localhost:8080")
 
 	return nil
 }
