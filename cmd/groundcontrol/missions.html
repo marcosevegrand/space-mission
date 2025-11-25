@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Missões</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1 class="title">🛰️ LISTA DE MISSÕES</h1>
+                    <p class="subtitle">Todas as missões atuais da Mothership</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <input type="text" id="apiUrl" value="http://localhost:8080" />
+                    <button id="loadBtn">Carregar Missões</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="center-content">
+                <div class="panel panel-large">
+                    <h2 class="panel-title">MISSÕES</h2>
+                    <div class="missions-list" id="missionsList">
+                        <!-- Missões serão populadas aqui -->
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="footer-content">
+                <span id="lastUpdate">Última atualização: --:--:--</span>
+                <span class="separator">|</span>
+                <button class="btn-secondary" onclick="location.reload()">Recarregar</button>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const apiUrlInput = document.getElementById("apiUrl")
+        const loadBtn = document.getElementById("loadBtn")
+        const missionsList = document.getElementById("missionsList")
+        const lastUpdate = document.getElementById("lastUpdate")
+
+        async function fetchMissions() {
+            const apiUrl = apiUrlInput.value
+            try {
+                const response = await fetch(`${apiUrl}/api/missions`)
+                const apiResponse = await response.json()
+                missionsList.innerHTML = ""
+                if (apiResponse.success && Array.isArray(apiResponse.data)) {
+                    apiResponse.data.forEach(mission => {
+                        const card = document.createElement("div")
+                        card.className = "mission-card"
+                        card.innerHTML = `
+                            <div class="mission-id">Missão #${mission.mission_id}</div>
+                            <div class="mission-task">${mission.task}</div>
+                            <span class="mission-status">${mission.status}</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${mission.progress}%"></div>
+                            </div>
+                        `
+                        missionsList.appendChild(card)
+                    })
+                    lastUpdate.textContent = "Última atualização: " + (new Date()).toLocaleTimeString("pt-PT")
+                } else {
+                    missionsList.innerHTML = "<p>Não há missões disponíveis.</p>"
+                }
+            } catch (error) {
+                missionsList.innerHTML = "<p>Erro ao carregar missões.</p>"
+            }
+        }
+
+        loadBtn.addEventListener("click", fetchMissions)
+        // Carregar automaticamente ao entrar na página
+        fetchMissions()
+    })
+    </script>
+</body>
+</html>

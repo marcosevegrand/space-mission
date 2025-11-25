@@ -11,30 +11,24 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
+                <a href="missoes.html" class="btn-secondary">Ver lista de Missões</a>
                 <div class="logo-section">
                     <h1 class="title">🛰️ GROUND CONTROL</h1>
                     <p class="subtitle">Mission Commander - Real-time Rover Monitoring</p>
                 </div>
-                <div class="connection-status">
+                <div style="display:flex;align-items:center;gap:10px;">
                     <span id="connectionStatus" class="status-indicator"></span>
                     <span id="connectionText" class="status-text"></span>
-            </div style="display:flex;align-items:center;gap:10px;">
-                  <input type="text" id="apiUrl" value="http://localhost:8080" />
-                  <button id="connectBtn">Conectar</button>
+                    <input type="text" id="apiUrl" value="http://localhost:8080" />
+                    <button id="connectBtn">Conectar</button>
+                </div>
             </div>
         </header>
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Left Sidebar - Rovers List -->
+            <!-- Left Sidebar - Quick Stats, Rovers, Missions -->
             <aside class="sidebar-left">
-                <div class="panel">
-                    <h2 class="panel-title">ROVERS</h2>
-                    <div class="rovers-list" id="roversList">
-                        <!-- Rovers will be populated here -->
-                    </div>
-                </div>
-
                 <div class="panel">
                     <h2 class="panel-title">QUICK STATS</h2>
                     <div class="stats-grid">
@@ -50,6 +44,20 @@
                             <span class="stat-label">System Health</span>
                             <span class="stat-value healthy" id="systemHealth">100%</span>
                         </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2 class="panel-title">ROVERS</h2>
+                    <div class="rovers-list" id="roversList">
+                        <!-- Rovers will be populated here -->
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2 class="panel-title">MISSÕES</h2>
+                    <div class="missions-list" id="missionsList">
+                        <!-- Missions will be populated here -->
                     </div>
                 </div>
             </aside>
@@ -75,18 +83,11 @@
                         </div>
                     </div>
                 </div>
+            </section>
 
-
-            <!-- Right Sidebar - Missions & Alerts -->
+            <!-- Right Sidebar -->
             <aside class="sidebar-right">
-                <!-- Active Missions -->
-                <div class="panel">
-                    <h2 class="panel-title">ACTIVE MISSIONS</h2>
-                    <div class="missions-list" id="missionsList">
-                        <!-- Missions will be populated here -->
-                    </div>
-                </div>
-
+                <!-- Place for future: Alerts, other panels -->
             </aside>
         </main>
 
