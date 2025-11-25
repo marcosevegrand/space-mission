@@ -45,7 +45,7 @@ func (m *MissionAssignment) String() string {
 			"  Task:          %v\n"+
 			"  Area:          %v\n"+
 			"  Status:        %s\n"+
-			"  Progress:      %03.2f%%\n"+
+			"  Progress:      %.2f%%\n"+
 			"  Max Duration:  %s\n"+
 			"  Update Freq:   %s\n"+
 			"  Timestamp:     %s",
@@ -77,8 +77,8 @@ func (m *MissionUpdate) String() string {
 			"  Rover ID:      %03d\n"+
 			"  Mission ID:    %03d\n"+
 			"  Status:        %s\n"+
-			"  Progress:      %03.2f%%\n"+
-			"  Data:          %.38s\n"+
+			"  Progress:      %.2f%%\n"+
+			"  Data:          %s\n"+
 			"  Timestamp:     %s",
 		m.RoverID,
 		m.MissionID,

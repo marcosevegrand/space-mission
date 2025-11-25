@@ -28,11 +28,11 @@ type spatialVars struct {
 }
 
 type missionVars struct {
-	assignment   models.MissionAssignment // Current mission assignment
-	path         *safe.List[models.Point] // Path to the target position
-	startTime    time.Time                // Start time of the current mission execution
-	progressRate float64                  // How much the progress increases per point visited
-	dataBuf      *safe.List[string]       // Buffer for data generated during mission execution
+	assignment   models.MissionAssignment         // Current mission assignment
+	path         *safe.List[models.Point]         // Path to the target position
+	startTime    time.Time                        // Start time of the current mission execution
+	progressRate float64                          // How much the progress increases per point visited
+	updateBuf    *safe.List[models.MissionUpdate] // Buffer for data generated during mission execution
 }
 
 type ComputeElement struct {
@@ -93,7 +93,7 @@ func NewComputeElement(
 		path:         safe.NewList[models.Point](),
 		startTime:    time.Time{},
 		progressRate: 0.0,
-		dataBuf:      safe.NewList[string](),
+		updateBuf:    safe.NewList[models.MissionUpdate](),
 	}
 	c.mission = safe.NewVar(mission)
 
@@ -291,7 +291,7 @@ func (c *ComputeElement) GetMissionUpdates() (updates *safe.List[models.MissionU
 	c.mission.View(
 		func(val *missionVars) {
 			status := val.assignment.Status
-			if val.dataBuf.IsEmpty() &&
+			if val.updateBuf.IsEmpty() &&
 				(status == models.MissionCompleted || status == models.MissionFailed) {
 				stop = true
 			}
@@ -306,19 +306,11 @@ func (c *ComputeElement) GetMissionUpdates() (updates *safe.List[models.MissionU
 
 	c.mission.Edit(
 		func(val *missionVars) {
-			for !val.dataBuf.IsEmpty() {
-				data, err := val.dataBuf.PopFront()
+			for !val.updateBuf.IsEmpty() {
+				update, err := val.updateBuf.PopFront()
 				if err != nil {
-					log.Printf("Error dequeuing data: %v", err)
+					log.Printf("Error dequeuing update message: %v", err)
 					continue
-				}
-				update := models.MissionUpdate{
-					RoverID:   c.roverID,
-					MissionID: val.assignment.MissionID,
-					Status:    val.assignment.Status,
-					Progress:  val.assignment.Progress,
-					Data:      data,
-					Timestamp: time.Now(),
 				}
 				updates.PushBack(update)
 			}

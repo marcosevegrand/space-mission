@@ -6,12 +6,13 @@ import "time"
 func (p *Peer[T]) cleanupLoop() {
 	defer p.wg.Done()
 
-	ticker := time.NewTicker(p.config.Timeouts.RecvTTL)
+	ticker := time.NewTicker(DefaultLoopTick)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-p.stopChan:
+			p.lf.Write("[EVENT] Cleanup loop stopped")
 			return
 		case <-ticker.C:
 			p.performCleanup()
@@ -21,16 +22,19 @@ func (p *Peer[T]) cleanupLoop() {
 
 // performCleanup removes stale entries from the received packets map.
 func (p *Peer[T]) performCleanup() {
-	p.pktMu.Lock()
-	defer p.pktMu.Unlock()
-
 	now := time.Now()
 	recvTTL := p.config.Timeouts.RecvTTL
 
-	for key, rPacket := range p.recvPkts {
-		if now.Sub(rPacket.lastUpdated) > recvTTL {
-			p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
-			delete(p.recvPkts, key)
-		}
-	}
+	p.recvPackets.Range(
+		func(key receivedPacketKey, packet *receivedPacket) bool {
+			packet.mu.Lock()
+			if now.Sub(packet.lastUpdated) > recvTTL {
+				p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
+				p.recvPackets.Delete(key)
+			}
+			packet.mu.Unlock()
+			return true
+		},
+	)
+
 }

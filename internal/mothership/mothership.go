@@ -82,15 +82,15 @@ func (m *Mothership) Start() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("[TCP CONNECTION ESTABLISHED]")
+	fmt.Println("[START] TELEMETRY STREAM")
 
 	err = m.missionLink.Start()
 	if err != nil {
 		return err
 	}
-	fmt.Println("[UDP LISTENER STARTED]")
+	fmt.Println("[START] MISSION LINK")
 
-	go m.StartHTTPServer(":8080")
+	// go m.StartHTTPServer("localhost:8080")
 
 	return nil
 }
@@ -105,9 +105,15 @@ func (m *Mothership) Stop() error {
 	})
 
 	close(m.stopChan)
-	m.telemetryStream.Stop()
+
 	m.missionLink.Stop()
+	fmt.Println("[STOP] MISSION LINK")
+
+	m.telemetryStream.Stop()
+	fmt.Println("[STOP] TELEMETRY STREAM")
+
 	m.wg.Wait()
+	fmt.Println("[STOP] MOVERSHIP")
 
 	return nil
 }

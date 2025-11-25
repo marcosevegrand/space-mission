@@ -30,7 +30,6 @@ func main() {
 	// Wait for an interrupt signal
 	<-sigChan
 
-	// Signal received, call r.Stop()
 	if err := r.Stop(); err != nil {
 		log.Printf("Error stopping rover: %v", err)
 	} else {

@@ -31,7 +31,7 @@ func main() {
 		},
 		Status:          models.MissionUnassigned,
 		Progress:        0,
-		MaxDuration:     10 * time.Minute,
+		MaxDuration:     20 * time.Second,
 		UpdateFrequency: 3 * time.Second,
 		Timestamp:       time.Now(),
 	})
