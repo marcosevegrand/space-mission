@@ -20,6 +20,20 @@ type SensorModule struct {
 	health              models.HealthStatus
 	roverPosition       models.Point
 	internalTemperature float64
+	humidity            float64
+	pressure            float64
+	co2                 float64
+	carbon              float64
+	hydrogen            float64
+	oxygen              float64
+	Minerals            []string
+}
+
+type ImageMetadata struct {
+	Timestamp   time.Time
+	Resolution  string
+	Position    models.Point
+	Description string
 }
 
 func NewSensorModule() *SensorModule {
@@ -27,6 +41,9 @@ func NewSensorModule() *SensorModule {
 		health:              models.HealthOK,
 		roverPosition:       models.Point{X: 0, Y: 0},
 		internalTemperature: initialInternalTemperature,
+		humidity:            50.0,
+		pressure:            1013.25,
+		co2:                 400.0,
 	}
 }
 
@@ -102,4 +119,107 @@ func (s *SensorModule) GetPosition(deltaT time.Duration, initial models.Point, v
 	s.roverPosition = newPosition
 
 	return newPosition
+}
+
+// Simulate environmental sensor readings with slight random variations
+func (s *SensorModule) GetHumidity() float64 {
+	// Simulate humidity changes within a range of ±2%
+	deltaHumidity := (rand.Float64()*2 - 1) * 2.0
+	newHumidity := s.humidity + deltaHumidity
+
+	// Clamp humidity between 0% and 100%
+	if newHumidity < 0 {
+		newHumidity = 0
+	} else if newHumidity > 100 {
+		newHumidity = 100
+	}
+
+	s.humidity = newHumidity
+	return s.humidity
+}
+
+func (s *SensorModule) GetPressure() float64 {
+	// Simulate pressure changes within a range of ±1 hPa
+	deltaPressure := (rand.Float64()*2 - 1) * 1.0
+	newPressure := s.pressure + deltaPressure
+
+	// Clamp pressure to a reasonable range (e.g., 900 to 1100 hPa)
+	if newPressure < 900 {
+		newPressure = 900
+	} else if newPressure > 1100 {
+		newPressure = 1100
+	}
+
+	s.pressure = newPressure
+	return s.pressure
+}
+
+func (s *SensorModule) GetCO2Level() float64 {
+	// Simulate CO2 level changes within a range of ±10 ppm
+	deltaCO2 := (rand.Float64()*2 - 1) * 10.0
+	newCO2 := s.co2 + deltaCO2
+
+	// Clamp CO2 levels to a reasonable range (e.g., 350 to 5000 ppm)
+	if newCO2 < 350 {
+		newCO2 = 350
+	} else if newCO2 > 5000 {
+		newCO2 = 5000
+	}
+
+	s.co2 = newCO2
+	return s.co2
+}
+
+// SimulateSampleAnalysis simulates the analysis of soil samples
+func (s *SensorModule) SimulateSampleAnalysis() {
+	minerals := []string{"Olivina", "Piroxena", "Feldspato"}
+	s.carbon = rand.Float64() * 50
+	s.hydrogen = rand.Float64() * 50
+	s.oxygen = rand.Float64() * 50
+	s.Minerals = minerals
+}
+
+func (s *SensorModule) GetCarbon() float64 {
+	return s.carbon
+}
+
+func (s *SensorModule) GetHydrogen() float64 {
+	return s.hydrogen
+}
+
+func (s *SensorModule) GetOxygen() float64 {
+	return s.oxygen
+}
+
+func (s *SensorModule) GetMinerals() []string {
+	return s.Minerals
+}
+
+// SimulateTerrainMapping simulates terrain mapping data
+func (s *SensorModule) SimulateTerrainMapping() [][]float64 {
+	// Generate a 5x5 grid of elevation data with random values
+	gridSize := 5
+	terrainData := make([][]float64, gridSize)
+	for i := range terrainData {
+		terrainData[i] = make([]float64, gridSize)
+		for j := range terrainData[i] {
+			terrainData[i][j] = rand.Float64() * 1000 // Elevation between 0 and 1000 meters
+		}
+	}
+	return terrainData
+}
+
+func SimulateImageCapture(position models.Point) ImageMetadata {
+	resolutions := []string{"1920x1080", "1280x720", "640x480"}
+	descriptions := []string{
+		"Imagem do terreno rochoso",
+		"Imagem de área com areia",
+		"Imagem de solo com vegetação seca",
+	}
+	return ImageMetadata{
+		Timestamp:   time.Now(),
+		Resolution:  resolutions[rand.IntN(len(resolutions))],
+		Position:    position,
+		Description: descriptions[rand.IntN(len(descriptions))],
+	}
 }
