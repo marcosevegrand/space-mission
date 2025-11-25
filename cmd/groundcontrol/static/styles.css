@@ -1,0 +1,331 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Courier New", monospace;
+  background-color: #0a0e27;
+  color: #00ff41;
+  line-height: 1.6;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* HEADER */
+.header {
+  background: linear-gradient(135deg, #1a1f3a 0%, #16213e 100%);
+  border-bottom: 3px solid #00ff41;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  font-size: 2.5em;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px #00ff41;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9em;
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #ff0000;
+  box-shadow: 0 0 10px #ff0000;
+  animation: pulse 1s infinite;
+}
+
+.status-indicator.connected {
+  background-color: #00ff41;
+  box-shadow: 0 0 10px #00ff41;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* MAIN CONTENT */
+.main-content {
+  flex: 1;
+  max-width: 1400px;
+  margin: 20px auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 0 20px;
+}
+
+.panel {
+  background-color: #1a1f3a;
+  border: 2px solid #00ff41;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
+}
+
+.panel h2 {
+  margin-bottom: 15px;
+  font-size: 1.3em;
+  border-bottom: 2px solid #00ff41;
+  padding-bottom: 10px;
+}
+
+.map-panel {
+  grid-column: 1 / -1;
+}
+
+#mapCanvas {
+  width: 100%;
+  height: 400px;
+  background-color: #0a0e27;
+  border: 1px solid #00aa00;
+}
+
+/* MISSÕES */
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.mission-card {
+  background-color: #0f1b2e;
+  border-left: 4px solid #00ff41;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.mission-id {
+  font-size: 0.9em;
+  color: #00aa00;
+  font-weight: bold;
+}
+
+.mission-task {
+  font-size: 1em;
+  margin: 5px 0;
+}
+
+.mission-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  margin-top: 5px;
+}
+
+.mission-status.unassigned {
+  background-color: #ff8800;
+  color: #000;
+}
+
+.mission-status.assigned {
+  background-color: #0088ff;
+  color: #fff;
+}
+
+.mission-status.in-progress {
+  background-color: #ffff00;
+  color: #000;
+}
+
+.mission-status.completed {
+  background-color: #00ff41;
+  color: #000;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #000;
+  border: 1px solid #00aa00;
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #00ff41;
+  transition: width 0.3s ease;
+}
+
+/* ROVERS */
+.rovers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.rover-card {
+  background-color: #0f1b2e;
+  border-left: 4px solid #00ccff;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.rover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.rover-id {
+  font-size: 0.9em;
+  color: #00ccff;
+  font-weight: bold;
+}
+
+.rover-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  background-color: #00ff41;
+  color: #000;
+}
+
+.rover-status.offline {
+  background-color: #ff0000;
+  color: #fff;
+}
+
+.rover-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 0.85em;
+  margin-top: 8px;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+}
+
+.stat-label {
+  color: #00aa00;
+}
+
+.stat-value {
+  color: #00ff41;
+  font-weight: bold;
+}
+
+/* TELEMETRIA */
+.telemetry-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.telemetry-item {
+  background-color: #0f1b2e;
+  padding: 12px;
+  border-radius: 4px;
+  border-left: 3px solid #00ccff;
+}
+
+.telemetry-label {
+  color: #00aa00;
+  font-size: 0.85em;
+}
+
+.telemetry-value {
+  font-size: 1.2em;
+  color: #00ff41;
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+/* FOOTER */
+.footer {
+  background-color: #1a1f3a;
+  border-top: 2px solid #00ff41;
+  padding: 15px 20px;
+  text-align: center;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 20px;
+}
+
+.footer p {
+  font-size: 0.85em;
+}
+
+#apiUrl {
+  background-color: #0a0e27;
+  border: 1px solid #00ff41;
+  color: #00ff41;
+  padding: 8px;
+  border-radius: 4px;
+  font-family: "Courier New", monospace;
+  width: 250px;
+}
+
+.btn-connect {
+  background-color: #00ff41;
+  color: #000;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-connect:hover {
+  background-color: #00cc33;
+  box-shadow: 0 0 10px #00ff41;
+}
+
+/* RESPONSIVO */
+@media (max-width: 1024px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+
+  .header h1 {
+    font-size: 1.8em;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .rover-stats {
+    grid-template-columns: 1fr;
+  }
+}
