@@ -271,35 +271,47 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const response = await fetch(`${apiUrl}/api/missions`)
             const apiResponse = await response.json()
-            missionsList.innerHTML = ""
-            if (apiResponse.success && Array.isArray(apiResponse.data)) {
-                // Update Active Missions count
-                activeMissions.textContent = apiResponse.data.length
 
-                apiResponse.data.forEach(mission => {
-                    const card = document.createElement("div")
-                    card.className = "mission-card"
-                    card.innerHTML = `
-                        <div class="mission-id">Mission #${mission.MissionID}</div>
-                        <div class="mission-task">${missionTaskToString(mission.Task)}</div>
-                        <span class="mission-status ${statusClassName(mission.Status)}">${missionStatusToString(mission.Status)}</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${mission.Progress}%"></div>
-                        </div>
-                    `
-                    missionsList.appendChild(card)
-                })
-                if (lastUpdate) {
-                    lastUpdate.textContent = "Last Update: " + (new Date()).toLocaleTimeString()
-                }
-                // Save missions for grid
-                window._latestMissions = apiResponse.data
-                renderCanvasGrid(window._latestRovers || [], window._latestMissions)
+            // Always clear the list first
+            missionsList.innerHTML = ""
+
+            if (apiResponse.success && Array.isArray(apiResponse.data)) {
+            // Only keep Assigned (2) and In Progress (3)
+            const filteredMissions = apiResponse.data.filter(mission => {
+                const status = Number(mission.Status)
+                return status === 2 || status === 3
+            })
+
+            activeMissions.textContent = filteredMissions.length.toString()
+
+            filteredMissions.forEach(mission => {
+                const card = document.createElement("div")
+                card.className = "mission-card"
+                card.innerHTML = `
+                <div class="mission-id">Mission #${mission.MissionID}</div>
+                <div class="mission-task">${missionTaskToString(mission.Task)}</div>
+                <span class="mission-status ${statusClassName(Number(mission.Status))}">
+                    ${missionStatusToString(Number(mission.Status))}
+                </span>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${mission.Progress}%"></div>
+                </div>
+                `
+                missionsList.appendChild(card)
+            })
+
+            if (lastUpdate) {
+                lastUpdate.textContent = "Last Update: " + (new Date()).toLocaleTimeString()
+            }
+
+            // Only filtered missions go to the grid
+            window._latestMissions = filteredMissions
+            renderCanvasGrid(window._latestRovers || [], window._latestMissions)
             } else {
-                activeMissions.textContent = "0"
-                missionsList.innerHTML = "<p>No missions available.</p>"
-                window._latestMissions = []
-                renderCanvasGrid(window._latestRovers || [], window._latestMissions)
+            activeMissions.textContent = "0"
+            missionsList.innerHTML = "<p>No missions available.</p>"
+            window._latestMissions = []
+            renderCanvasGrid(window._latestRovers || [], window._latestMissions)
             }
         } catch (error) {
             activeMissions.textContent = "0"
@@ -308,6 +320,9 @@ document.addEventListener("DOMContentLoaded", () => {
             renderCanvasGrid(window._latestRovers || [], window._latestMissions)
         }
     }
+
+
+
 
     // Initial fetch
     fetchRovers()
@@ -318,5 +333,5 @@ document.addEventListener("DOMContentLoaded", () => {
         fetchRovers()
         fetchMissions()
         renderCanvasGrid(window._latestRovers || [], window._latestMissions || [])
-    }, 250)
+    }, 500)
 })
