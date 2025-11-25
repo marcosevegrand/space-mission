@@ -8,4 +8,5 @@ func (m *Mothership) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/rovers", m.HandleGetRovers)
 	mux.HandleFunc("/api/missions", m.HandleGetMissions)
 	mux.Handle("/static/", m.HandleStatic())
+	mux.HandleFunc("/missionsView", m.HandleMissionsHTML) // new route
 }
