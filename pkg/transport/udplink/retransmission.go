@@ -23,53 +23,47 @@ func (p *Peer[T]) retransmissionLoop() {
 
 func (p *Peer[T]) checkRetransmissions() {
 	retxConf := p.config.Retransmission
+	p.sentPackets.Range(
+		func(seqNum uint32, packet *sentPacket) bool {
 
-	p.pktMu.Lock()
-	defer p.pktMu.Unlock()
-
-	for seqNum, pkt := range p.sentPkts {
-		// Check if the packet's backoff timer has expired.
-		if time.Since(pkt.lastTransmission) < pkt.currentBackoff {
-			continue // Not time to retransmit this packet yet.
-		}
-
-		// Check for timeout failure.
-		if retxConf.MaxRetries > 0 && pkt.retryCount >= retxConf.MaxRetries {
-			p.lf.Write("[TIMEOUT] seqNum %d failed after max retries (%d)", seqNum, pkt.retryCount)
-			delete(p.sentPkts, seqNum)
-			continue // Move to the next packet.
-		}
-
-		// A retransmission event is happening.
-		p.lf.Write("[RE-TX] seqNum %d (retry #%d)", seqNum, pkt.retryCount+1)
-
-		unackedFragments := make([][]byte, 0)
-
-		// Gather all un-acked fragments to be retransmitted in this batch.
-		for i, acked := range pkt.fragsAck {
-			if !acked {
-				unackedFragments = append(unackedFragments, pkt.fragments[i])
+			packet.txMu.Lock()
+			// Check if the packet is ready for retransmission.
+			if packet.lastTransmission.IsZero() || time.Since(packet.lastTransmission) < packet.currentBackoff {
+				return true // Not time to retransmit this packet yet.
 			}
-		}
-
-		// Release the lock to avoid holding it during network I/O
-		p.pktMu.Unlock()
-		for i, fragment := range unackedFragments {
-			if err := p.sendFragment(fragment, pkt.dest); err != nil {
-				p.lf.Write("[WARN] failed to retransmit fragment %d (seqNum %d): %v", i+1, seqNum, err)
+			// Check for timeout failure.
+			if retxConf.MaxRetries > 0 && packet.retryCount >= retxConf.MaxRetries {
+				p.lf.Write("[TIMEOUT] seqNum %d failed after max retries (%d)", seqNum, packet.retryCount)
+				p.sentPackets.Delete(seqNum)
+				return true // Move to the next packet.
 			}
-		}
-		p.pktMu.Lock()
+			p.lf.Write("[RE-TX] seqNum %d (retry #%d)", seqNum, packet.retryCount)
+			packet.txMu.Unlock()
 
-		// Update the shared state for the next retransmission.
-		pkt.retryCount++
-		pkt.lastTransmission = time.Now()
+			packet.ackMu.Lock()
+			for i, acked := range packet.fragsAck {
+				if !acked {
+					if err := p.sendFragment(packet.fragments[i], packet.dest); err != nil {
+						p.lf.Write("[WARN] failed to retransmit fragment %d (seqNum %d): %v", i+1, seqNum, err)
+					}
+				}
+			}
+			packet.ackMu.Unlock()
 
-		// Apply exponential backoff to the shared timer.
-		newBackoff := time.Duration(float64(pkt.currentBackoff) *
-			math.Pow(retxConf.BackoffMultiplier, float64(pkt.retryCount)))
+			packet.txMu.Lock()
+			// Update the shared state for the next retransmission.
+			packet.retryCount++
+			packet.lastTransmission = time.Now()
 
-		pkt.currentBackoff = min(newBackoff, retxConf.MaxBackoff)
-	}
+			// Apply exponential backoff to the shared timer.
+			newBackoff := time.Duration(float64(packet.currentBackoff) *
+				math.Pow(retxConf.BackoffMultiplier, float64(packet.retryCount)))
+
+			packet.currentBackoff = min(newBackoff, retxConf.MaxBackoff)
+			packet.txMu.Unlock()
+
+			return true
+		},
+	)
 
 }

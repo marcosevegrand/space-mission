@@ -6,12 +6,15 @@ serializar os dados para enviar na rede
 
 
 O que falta:
-- in-order delivery
-- mission failure on max duration timeout (in progress)
-- improved memory management and mutex usage in udp link (in progress)
-- limit number of go routines for fragment handling
-- improve logging capabilities and fix excess logging in udp link (partially done)
-- implement observation api (HUGO E FRANCISCO ;-;)
+- in-order delivery [PENDING]
+- improved memory management and mutex usage in udp link [PENDING]
+- limit number of go routines for fragment handling [PENDING]
+- groundControl send missions to mothership from config files [PENDING]
+- implement observation api [HUGO E FRANCISCO ;-;]
+
+- improve logging capabilities and fix excess logging in udp link [PARTIALLY DONE]
+- mission failure on max duration timeout [COMPLETED]
+
 
 
 
@@ -21,8 +24,9 @@ No missionLink já temos:
     Acknowledgements
     Retransmissions
     Error Detection
+    Forward Error Correction
+    Thread Work Pool
 Também precisamos de implementar:
-    Error Correction (no caso FEC)
     In-Order Delivery
 
 -----------------

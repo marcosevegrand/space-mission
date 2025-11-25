@@ -8,7 +8,7 @@ import "time"
 // The ratio of parity shards determines redundancy. Shard counts for each
 // message are calculated dynamically based on this ratio and the message size.
 type FECConfig struct {
-	FragmentSize     int     // The fragment size in bytes (includes the header size)
+	MTU              int     // The largest transferable fragment size in bytes (includes the header size)
 	MinDataShards    int     // Minimum amount of data shards
 	ParityShardRatio float64 // The parity ratio (0-1) of the FEC (e.g., 0.3 ratio = 10 data + 3 parity)
 }
@@ -33,6 +33,7 @@ type Config struct {
 	Timeouts       TimeoutConfig
 	Retransmission RetransmissionConfig
 	FEC            FECConfig
+	MaxWorkers     int
 }
 
 // --- Default Configurations ---
@@ -48,13 +49,13 @@ var (
 	DefaultRetransmissionConfig = RetransmissionConfig{
 		MaxRetries:        15,
 		InitialBackoff:    1 * time.Second,
-		MaxBackoff:        60 * time.Second,
+		MaxBackoff:        240 * time.Second,
 		BackoffMultiplier: 2,
 	}
 
 	// DefaultFECConfig sets FEC fragment size to 512 bytes with a 10:3 data-to-parity ratio.
 	DefaultFECConfig = FECConfig{
-		FragmentSize:     1500,
+		MTU:              1400,
 		MinDataShards:    10,
 		ParityShardRatio: 0.3,
 	}
@@ -64,12 +65,17 @@ var (
 		Timeouts:       DefaultTimeoutConfig,
 		Retransmission: DefaultRetransmissionConfig,
 		FEC:            DefaultFECConfig,
+		MaxWorkers:     10000,
 	}
 
 	// NoFECConfig provides a configuration with FEC disabled, relying only on retransmissions.
 	NoFECConfig = Config{
 		Timeouts:       DefaultTimeoutConfig,
 		Retransmission: DefaultRetransmissionConfig,
-		FEC:            FECConfig{FragmentSize: 1500, MinDataShards: 0, ParityShardRatio: 0},
+		FEC: FECConfig{
+			MTU:              1400,
+			MinDataShards:    0,
+			ParityShardRatio: 0,
+		},
 	}
 )

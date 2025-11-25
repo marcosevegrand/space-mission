@@ -5,6 +5,7 @@ package udplink
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	"github.com/klauspost/reedsolomon"
@@ -13,15 +14,19 @@ import (
 // sentPacket tracks the state of an outgoing message, including all its fragments,
 // acknowledgment status, and retransmission metadata.
 type sentPacket struct {
-	seqNum           uint32
-	dest             *net.UDPAddr
-	fragments        [][]byte
-	requiredShards   int
-	fragsAck         []bool
-	acksReceived     int
+	seqNum         uint32
+	dest           *net.UDPAddr
+	fragments      [][]byte
+	requiredShards int
+
+	fragsAck     []bool
+	acksReceived int
+	ackMu        sync.Mutex
+
 	lastTransmission time.Time
 	currentBackoff   time.Duration
 	retryCount       int
+	txMu             sync.Mutex
 }
 
 // receivedPacket handles the reassembly of an incoming message on the receiver side.
@@ -30,11 +35,13 @@ type receivedPacket struct {
 	seqNum       uint32
 	dataShards   int
 	parityShards int
+	fecEncoder   reedsolomon.Encoder
+
 	shards       [][]byte
 	fragsRecv    []bool
 	numFragsRecv int
 	lastUpdated  time.Time
-	fecEncoder   reedsolomon.Encoder
+	mu           sync.Mutex
 }
 
 // receivedPacketKey is a composite key used to uniquely identify a message
@@ -44,9 +51,9 @@ type receivedPacketKey struct {
 	seqNum uint32
 }
 
-// orderedPayload wraps a fully reassembled payload with its sequence number
+// payload wraps a fully reassembled payload with its sequence number
 // to facilitate in-order delivery to the handler.
-type orderedPayload struct {
+type payload struct {
 	seqNum  uint32
 	payload []byte
 }

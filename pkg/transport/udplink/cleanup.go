@@ -21,16 +21,19 @@ func (p *Peer[T]) cleanupLoop() {
 
 // performCleanup removes stale entries from the received packets map.
 func (p *Peer[T]) performCleanup() {
-	p.pktMu.Lock()
-	defer p.pktMu.Unlock()
-
 	now := time.Now()
 	recvTTL := p.config.Timeouts.RecvTTL
 
-	for key, rPacket := range p.recvPkts {
-		if now.Sub(rPacket.lastUpdated) > recvTTL {
-			p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
-			delete(p.recvPkts, key)
-		}
-	}
+	p.recvPackets.Range(
+		func(key receivedPacketKey, packet *receivedPacket) bool {
+			packet.mu.Lock()
+			if now.Sub(packet.lastUpdated) > recvTTL {
+				p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
+				p.recvPackets.Delete(key)
+			}
+			packet.mu.Unlock()
+			return true
+		},
+	)
+
 }

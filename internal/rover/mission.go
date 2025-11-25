@@ -36,6 +36,7 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 				val.progressRate = 100.0 / float64(val.path.Size())
 				targetPosition, _ = val.path.PopFront()
 				val.assignment.Status = models.MissionInProgress
+				val.startTime = time.Now()
 			},
 		)
 		c.spatial.Edit(
@@ -47,12 +48,22 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 
 	case models.MissionInProgress:
 
+		c.mission.View(
+			func(val *missionVars) {
+				deadline := val.startTime.Add(val.assignment.MaxDuration)
+				if time.Now().After(deadline) {
+					val.dataBuf.PushBack("[MISSION FAILURE: MAX DURATION EXCEEDED]")
+					val.assignment.Status = models.MissionFailed
+				}
+			},
+		)
+
 		if geo.EqualPoints(currentPosition, targetPosition) {
 			data, err := c.executeTask(task, currentPosition)
 			if err != nil {
 				c.mission.Edit(
 					func(val *missionVars) {
-						val.dataBuf.PushBack("[FAILED TO EXECUTE TASK]")
+						val.dataBuf.PushBack("[MISSION FAILURE: FAILED TO EXECUTE TASK]")
 						val.assignment.Status = models.MissionFailed
 					},
 				)
