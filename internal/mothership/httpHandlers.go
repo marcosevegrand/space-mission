@@ -33,3 +33,8 @@ func (m *Mothership) HandleIndex(w http.ResponseWriter, r *http.Request) {
 func (m *Mothership) HandleStatic() http.Handler {
 	return http.StripPrefix("/static/", http.FileServer(http.Dir("cmd/groundcontrol/static")))
 }
+
+// Handler to serve missions.html
+func (m *Mothership) HandleMissionsHTML(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join("cmd/groundcontrol", "missions.html"))
+}
