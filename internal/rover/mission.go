@@ -61,6 +61,7 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 			func(val *missionVars) {
 				deadline := val.startTime.Add(val.assignment.MaxDuration)
 				if time.Now().After(deadline) {
+					val.path.Clear()
 					val.assignment.Status = models.MissionFailed
 					update := models.MissionUpdate{
 						RoverID:   c.roverID,
@@ -101,7 +102,7 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 			c.mission.Edit(
 				func(val *missionVars) {
 					val.assignment.Progress += val.progressRate
-					if val.assignment.Progress >= 100 {
+					if val.assignment.Progress >= 99.999 {
 						val.assignment.Progress = 100
 						val.assignment.Status = models.MissionCompleted
 						end = true

@@ -21,7 +21,7 @@ func (m *MissionRequest) String() string {
 			"  Timestamp:   %s",
 		m.RoverID,
 		m.Position.X, m.Position.Y,
-		m.Timestamp.Format(time.RFC3339Nano),
+		m.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 }
 
@@ -29,6 +29,7 @@ func (m *MissionRequest) String() string {
 // Contains all information needed for the rover to execute the mission.
 type MissionAssignment struct {
 	MissionID       uint16         // Unique identifier for the mission
+	RoverID         uint16         // Unique identifier for the rover assigned to the mission (0 reserved for no rover assigned)
 	Task            Task           // Type of task to perform
 	Area            GeographicArea // Geographic area where the mission should be performed
 	Status          MissionStatus  // Current status of the mission
@@ -42,6 +43,7 @@ func (m *MissionAssignment) String() string {
 	return fmt.Sprintf(
 		"-- Mission Assignment --\n"+
 			"  Mission ID:    %03d\n"+
+			"  Rover ID:      %03d\n"+
 			"  Task:          %v\n"+
 			"  Area:          %v\n"+
 			"  Status:        %s\n"+
@@ -50,13 +52,14 @@ func (m *MissionAssignment) String() string {
 			"  Update Freq:   %s\n"+
 			"  Timestamp:     %s",
 		m.MissionID,
+		m.RoverID,
 		m.Task,
 		m.Area,
 		m.Status,
 		m.Progress,
 		m.MaxDuration,
 		m.UpdateFrequency,
-		m.Timestamp.Format(time.RFC3339Nano),
+		m.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 }
 
@@ -85,7 +88,7 @@ func (m *MissionUpdate) String() string {
 		m.Status,
 		m.Progress,
 		m.Data,
-		m.Timestamp.Format(time.RFC3339Nano),
+		m.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 }
 

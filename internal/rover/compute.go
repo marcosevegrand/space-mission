@@ -314,6 +314,18 @@ func (c *ComputeElement) GetMissionUpdates() (updates *safe.List[models.MissionU
 				}
 				updates.PushBack(update)
 			}
+
+			if updates.Size() == 0 {
+				update := models.MissionUpdate{
+					RoverID:   c.roverID,
+					MissionID: val.assignment.MissionID,
+					Status:    val.assignment.Status,
+					Progress:  val.assignment.Progress,
+					Data:      "[NO NEW AVAILABLE DATA]",
+					Timestamp: time.Now(),
+				}
+				updates.PushBack(update)
+			}
 		},
 	)
 

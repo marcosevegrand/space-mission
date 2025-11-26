@@ -8,7 +8,7 @@ import (
 
 // These constants are not realistic values for a rover and are intended for simulation purposes only.
 const (
-	maxSpeed          = 3.0   // Maximum speed in meters per second
+	maxSpeed          = 1.0   // Maximum speed in meters per second
 	toleranceDistance = 0.001 // Distance tolerance for reaching the target
 )
 

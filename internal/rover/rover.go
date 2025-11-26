@@ -26,8 +26,8 @@ type Rover struct {
 
 func NewRover(
 	roverID uint16, // rover id
-	mothershipStreamAddr string, // mothership tcp address
-	roverLinkAddr string, // rover udp address
+	mothershipTSAddr string, // mothership tcp address
+	roverMLAddr string, // rover udp address
 ) (*Rover, error) {
 
 	r := &Rover{
@@ -38,8 +38,8 @@ func NewRover(
 	}
 
 	telemetryStream, err := tcpstream.NewClient(
-		mothershipStreamAddr,
-		"telemetry_stream.log",
+		mothershipTSAddr,
+		fmt.Sprintf("telemetry_stream_%d.log", roverID),
 		codecs.NewTelemetryCodec().Encode,
 		tcpstream.DefaultClientTimeout,
 		tcpstream.DefaultReconnect,
@@ -50,8 +50,8 @@ func NewRover(
 	r.telemetryStream = telemetryStream
 
 	missionLink, err := udplink.NewPeer(
-		roverLinkAddr,
-		"mission_link.log",
+		roverMLAddr,
+		fmt.Sprintf("mission_link_%d.log", roverID),
 		codecs.NewMissionCodec().Encode,
 		codecs.NewMissionCodec().Decode,
 		r.missionHandler,
@@ -166,7 +166,7 @@ func (r *Rover) missionUpdateLoop(frequency time.Duration, addr string) error {
 func (r *Rover) Start(
 	telemetryUpdateFrequency time.Duration,
 	missionRequestFrequency time.Duration,
-	missionRemoteAddr string,
+	mothershipMLAddr string,
 ) error {
 	if r.running.Get() {
 		return fmt.Errorf("rover already running")
@@ -195,7 +195,7 @@ func (r *Rover) Start(
 	}
 	fmt.Println("[START] MISSION LINK")
 
-	err = r.sendMissionRequests(missionRequestFrequency, missionRemoteAddr)
+	err = r.sendMissionRequests(missionRequestFrequency, mothershipMLAddr)
 	if err != nil {
 		return err
 	}

@@ -124,7 +124,7 @@ func (p *Peer[T]) Start() error {
 
 	p.lf.Write("[EVENT] Peer started on %s", p.addr)
 
-	p.wg.Add(4) // All three goroutines are mandatory for operation
+	p.wg.Add(4) // All four goroutines are mandatory for operation
 	go p.receiveLoop()
 	go p.deliveryLoop()
 	go p.cleanupLoop()

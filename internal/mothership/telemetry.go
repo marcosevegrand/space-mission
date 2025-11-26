@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"space-mission/pkg/models"
 	"space-mission/pkg/utils/safe"
+	"time"
 )
 
 func (m *Mothership) telemetryHandler(telemetry *models.Telemetry, senderAddr string) error {
@@ -20,6 +21,9 @@ func (m *Mothership) telemetryHandler(telemetry *models.Telemetry, senderAddr st
 	// 2. Update the value INSIDE the existing container.
 	// This acquires the lock on the specific rover, updates the data, and releases.
 	container.Set(*telemetry)
+
+	// 3. Update telemetry freshness
+	m.roverLastUpdate.Store(telemetry.RoverID, time.Now())
 
 	// Debug print
 	// fmt.Println(telemetry)

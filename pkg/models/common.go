@@ -204,6 +204,7 @@ const (
 	MissionInProgress                          // Mission is currently being executed
 	MissionFailed                              // Mission was not completed successfully
 	MissionCompleted                           // Mission was completed successfully
+	MissionUnknown                             // Mission status is unknown
 )
 
 // String returns the string representation of a MissionStatus.

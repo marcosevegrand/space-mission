@@ -11,7 +11,7 @@ type File struct {
 }
 
 func NewLogFile(filename string) (*File, error) {
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +23,7 @@ func (l *File) Close() error {
 }
 
 // Write a string to log with date/time prefix
-func (l *File) Write(format string, args ...interface{}) error {
+func (l *File) Write(format string, args ...any) error {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	_, err := fmt.Fprintf(l.file, "%s | %s\n", timestamp, fmt.Sprintf(format, args...))
 	return err

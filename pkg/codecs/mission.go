@@ -105,6 +105,11 @@ func (c *MissionCodec) encodeAssignment(msg *models.MissionAssignment) ([]byte, 
 		return nil, fmt.Errorf("failed to write mission ID: %w", err)
 	}
 
+	// Write RoverID
+	if err := binary.Write(buf, binary.BigEndian, msg.RoverID); err != nil {
+		return nil, fmt.Errorf("failed to write rover ID: %w", err)
+	}
+
 	// Write Task
 	if err := binary.Write(buf, binary.BigEndian, uint8(msg.Task)); err != nil {
 		return nil, fmt.Errorf("failed to write task: %w", err)
@@ -156,6 +161,11 @@ func (c *MissionCodec) decodeAssignment(reader *bytes.Reader) (models.MissionMes
 	// Read MissionID
 	if err := binary.Read(reader, binary.BigEndian, &ma.MissionID); err != nil {
 		return nil, fmt.Errorf("failed to read mission ID: %w", err)
+	}
+
+	// Read RoverID
+	if err := binary.Read(reader, binary.BigEndian, &ma.RoverID); err != nil {
+		return nil, fmt.Errorf("failed to read rover ID: %w", err)
 	}
 
 	// Read Task

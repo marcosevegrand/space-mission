@@ -8,6 +8,7 @@ import (
 	"space-mission/pkg/transport/udplink"
 	"space-mission/pkg/utils/safe"
 	"sync"
+	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
 )
@@ -15,11 +16,17 @@ import (
 type Mothership struct {
 	// keyed by mission ID
 	missionAssignments *xsync.Map[uint16, *safe.Var[models.MissionAssignment]] // it stores mission assignments
+	missionLastUpdate  *xsync.Map[uint16, time.Time]                           // it stores the last update time of each mission
 	unassignedMissions *safe.List[uint16]                                      // it stores missions that haven't been assigned yet
 
 	// keyed by rover ID
-	roverMission   *xsync.Map[uint16, uint16]                      // it stores currently assigned missions IDs
-	roverTelemetry *xsync.Map[uint16, *safe.Var[models.Telemetry]] // it stores latest telemetry data of each rover
+	roverTelemetry  *xsync.Map[uint16, *safe.Var[models.Telemetry]] // it stores latest telemetry data of each rover
+	roverLastUpdate *xsync.Map[uint16, time.Time]                   // it stores the last update time of each rover
+	roverHasMission *xsync.Map[uint16, bool]                        // it stores whether each rover has a mission or not
+
+	// stale configs
+	staleMission time.Duration // should be set to a reasonable value that considers the average mission update frequency and RTT
+	staleRover   time.Duration // should be set to a reasonable value that considers the average mission update frequency and RTT
 
 	telemetryStream *tcpstream.Server[*models.Telemetry]
 	missionLink     *udplink.Peer[models.MissionMessage]
@@ -30,21 +37,30 @@ type Mothership struct {
 }
 
 func NewMothership(
-	mothershipStreamAddr string,
-	mothershipLinkAddr string,
+	mothershipTSAddress string,
+	mothershipMLAddress string,
+	staleMission time.Duration,
+	staleRover time.Duration,
 ) (*Mothership, error) {
 
 	m := &Mothership{
 		missionAssignments: xsync.NewMap[uint16, *safe.Var[models.MissionAssignment]](),
+		missionLastUpdate:  xsync.NewMap[uint16, time.Time](),
 		unassignedMissions: safe.NewList[uint16](),
-		roverMission:       xsync.NewMap[uint16, uint16](),
-		roverTelemetry:     xsync.NewMap[uint16, *safe.Var[models.Telemetry]](),
-		running:            safe.NewVar(false),
-		stopChan:           make(chan struct{}),
+
+		roverTelemetry:  xsync.NewMap[uint16, *safe.Var[models.Telemetry]](),
+		roverLastUpdate: xsync.NewMap[uint16, time.Time](),
+		roverHasMission: xsync.NewMap[uint16, bool](),
+
+		staleMission: staleMission,
+		staleRover:   staleRover,
+
+		running:  safe.NewVar(false),
+		stopChan: make(chan struct{}),
 	}
 
 	telemetryStream, err := tcpstream.NewServer[*models.Telemetry](
-		mothershipStreamAddr,
+		mothershipTSAddress,
 		"telemetry_stream.log",
 		codecs.NewTelemetryCodec().Decode,
 		m.telemetryHandler,
@@ -56,7 +72,7 @@ func NewMothership(
 	m.telemetryStream = telemetryStream
 
 	missionLink, err := udplink.NewPeer(
-		mothershipLinkAddr,
+		mothershipMLAddress,
 		"mission_link.log",
 		codecs.NewMissionCodec().Encode,
 		codecs.NewMissionCodec().Decode,
@@ -90,7 +106,18 @@ func (m *Mothership) Start() error {
 	}
 	fmt.Println("[START] MISSION LINK")
 
+	// err := m.httpServer.Start()
+	// if err != nil {
+	// 	return err
+	// }
+
 	go m.StartHTTPServer("localhost:8080")
+	fmt.Println("[START] OBSERVATION API")
+
+	err = m.startStaleCheck()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
