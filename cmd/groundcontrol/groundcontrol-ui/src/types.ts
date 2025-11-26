@@ -75,6 +75,7 @@ export interface GeographicArea {
 
 export interface Telemetry {
   RoverID: number;
+  MissionID: number;
   Position: Point;
   OperationalState: OperationalState;
   BatteryPercentage: number;

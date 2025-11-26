@@ -31,6 +31,11 @@ func (c *TelemetryCodec) Encode(msg *models.Telemetry) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write RoverID: %w", err)
 	}
 
+	// Write MissionID
+	if err := binary.Write(buf, binary.BigEndian, msg.MissionID); err != nil {
+		return nil, fmt.Errorf("failed to write MissionID: %w", err)
+	}
+
 	// Encode Position
 	if err := c.encodePoint(buf, msg.Position); err != nil {
 		return nil, fmt.Errorf("failed to encode position: %w", err)
@@ -77,6 +82,10 @@ func (c *TelemetryCodec) Decode(data []byte) (*models.Telemetry, error) {
 
 	if err := binary.Read(reader, binary.BigEndian, &t.RoverID); err != nil {
 		return nil, fmt.Errorf("failed to read RoverID: %w", err)
+	}
+
+	if err := binary.Read(reader, binary.BigEndian, &t.MissionID); err != nil {
+		return nil, fmt.Errorf("failed to read MissionID: %w", err)
 	}
 
 	position, err := c.decodePoint(reader)

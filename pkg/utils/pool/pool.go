@@ -1,7 +1,6 @@
 package pool
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -28,7 +27,7 @@ func NewWorkerPool(maxWorkers int) *WorkerPool {
 
 // TrySubmit attempts to spawn a goroutine to run the task.
 // returns true if the task was accepted, false if the pool was full (dropped).
-func (wp *WorkerPool) TrySubmit(task func()) error {
+func (wp *WorkerPool) TrySubmit(task func()) (accepted bool) {
 	select {
 	case wp.sem <- struct{}{}:
 		// 1. We successfully acquired a token.
@@ -42,12 +41,12 @@ func (wp *WorkerPool) TrySubmit(task func()) error {
 			task()
 		}()
 
-		return nil
+		return true
 
 	default:
 		// 2. The semaphore channel is full.
 		// We drop the task immediately.
-		return fmt.Errorf("workPool is full, task dropped")
+		return false
 	}
 }
 

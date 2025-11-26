@@ -12,10 +12,11 @@ func (p *Peer[T]) deliveryLoop() {
 	ticker := time.NewTicker(DefaultLoopTick)
 	defer ticker.Stop()
 
+	p.lf.Write("[EVENT] delivery loop started")
 	for {
 		select {
 		case <-p.stopChan:
-			p.lf.Write("[EVENT] Delivery loop stopped")
+			p.lf.Write("[EVENT] delivery loop stopped")
 			return
 		case <-ticker.C:
 			p.performDelivery()
@@ -29,12 +30,16 @@ func (p *Peer[T]) performDelivery() {
 
 	p.recvQueue.Range(func(senderAddr string, queue *safe.List[payload]) bool {
 		wg.Add(1)
-		p.workers.TrySubmit(
+		accepted := p.workers.TrySubmit(
 			func() {
 				defer wg.Done()
 				p.processQueue(senderAddr, queue)
 			},
 		)
+		if !accepted {
+			p.lf.Write("[WARN] Worker pool full, dropping packet from %s", senderAddr)
+			wg.Done()
+		}
 		return true
 	})
 
@@ -129,7 +134,7 @@ func (p *Peer[T]) processPayload(senderAddr string, queue *safe.List[payload]) {
 		p.lf.Write("[ERROR] Failed to decode seq %d: %v", item.seqNum, err)
 		return
 	}
-	p.lf.Write("[RECEIVED] %v", data)
+	p.lf.Write("[RECEIVED] from %s\n%v", senderAddr, data)
 
 	// Hand off to application
 	p.handler(data, senderAddr)

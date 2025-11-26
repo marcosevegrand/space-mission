@@ -13,7 +13,7 @@ import (
 const (
 	mothershipTSAddress = "localhost:8000"
 	mothershipMLAddress = "localhost:9000"
-	staleMission        = 5 * time.Second
+	staleMission        = 5
 	staleRover          = 5 * time.Second
 )
 
@@ -41,7 +41,7 @@ func main() {
 		},
 		Status:          models.MissionUnassigned,
 		Progress:        0,
-		MaxDuration:     130 * time.Second,
+		MaxDuration:     10 * time.Minute,
 		UpdateFrequency: 3 * time.Second,
 		Timestamp:       time.Now(),
 	})
@@ -61,7 +61,7 @@ func main() {
 		Status:          models.MissionUnassigned,
 		Progress:        0,
 		MaxDuration:     40 * time.Second,
-		UpdateFrequency: 1 * time.Second,
+		UpdateFrequency: 3 * time.Second,
 		Timestamp:       time.Now(),
 	})
 
@@ -79,8 +79,27 @@ func main() {
 		},
 		Status:          models.MissionUnassigned,
 		Progress:        0,
-		MaxDuration:     30*time.Hour + 10*time.Minute + 5*time.Second,
-		UpdateFrequency: 4 * time.Second,
+		MaxDuration:     10 * time.Minute,
+		UpdateFrequency: 3 * time.Second,
+		Timestamp:       time.Now(),
+	})
+
+	// Mission 3
+	m.AddMissionAssignment(&models.MissionAssignment{
+		MissionID: 4,
+		RoverID:   0,
+		Task:      models.TaskImageCapture,
+		Area: models.GeographicArea{
+			Shape: models.ShapeRectangle,
+			Coords: models.CoordsRectangle{
+				TopLeft:     models.Point{X: -30, Y: 30},
+				BottomRight: models.Point{X: -20, Y: 20},
+			},
+		},
+		Status:          models.MissionUnassigned,
+		Progress:        0,
+		MaxDuration:     10 * time.Minute,
+		UpdateFrequency: 3 * time.Second,
 		Timestamp:       time.Now(),
 	})
 

@@ -47,7 +47,7 @@ var (
 	DefaultTimeoutConfig = TimeoutConfig{
 		Read:    3 * time.Second,
 		Write:   3 * time.Second,
-		RecvTTL: 1 * time.Second,
+		RecvTTL: 240 * time.Second, // received TTL should be significantly larger than Max Retransmission Backoff
 		InOrder: 2 * time.Second,
 	}
 
@@ -55,7 +55,7 @@ var (
 	DefaultRetransmissionConfig = RetransmissionConfig{
 		MaxRetries:        15,
 		InitialBackoff:    1 * time.Second,
-		MaxBackoff:        240 * time.Second,
+		MaxBackoff:        120 * time.Second,
 		BackoffMultiplier: 2,
 	}
 

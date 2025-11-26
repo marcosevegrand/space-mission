@@ -38,12 +38,15 @@ func (m *Mothership) checkStale() error {
 }
 
 func (m *Mothership) checkStaleRovers() error {
+	// Iterate over each rover's last update timestamp
 	m.roverLastUpdate.Range(
 		func(roverID uint16, lastUpdate time.Time) bool {
-			if !lastUpdate.IsZero() && time.Since(lastUpdate) > m.staleRover {
+			// Check if rover last update happened more than the set duration ago
+			// If so, set the rover operational state to unknown and reset its last update time
+			if time.Since(lastUpdate) > m.staleRover {
 				telemetry, ok := m.roverTelemetry.Load(roverID)
 				if !ok {
-					fmt.Printf("Error getting stalerover #%d telemetry\n", roverID)
+					fmt.Printf("Error getting stale rover #%d telemetry\n", roverID)
 					return true
 				}
 				telemetry.Edit(
@@ -52,7 +55,6 @@ func (m *Mothership) checkStaleRovers() error {
 						m.roverLastUpdate.Store(roverID, time.Time{})
 					},
 				)
-				m.roverHasMission.Store(roverID, false)
 			}
 			return true
 		},
@@ -63,7 +65,15 @@ func (m *Mothership) checkStaleRovers() error {
 func (m *Mothership) checkStaleMissions() error {
 	m.missionLastUpdate.Range(
 		func(missionID uint16, lastUpdate time.Time) bool {
-			if !lastUpdate.IsZero() && time.Since(lastUpdate) > m.staleMission {
+
+			mission, ok := m.missionAssignments.Load(missionID)
+			if !ok {
+				fmt.Printf("Error getting mission assignment #%d\n", missionID)
+				return true
+			}
+
+			if mission.Get().Status == models.MissionInProgress &&
+				time.Since(lastUpdate) > time.Duration(m.staleMission)*mission.Get().UpdateFrequency {
 				mission, ok := m.missionAssignments.Load(missionID)
 				if !ok {
 					fmt.Printf("Error getting stale mission assignment #%d\n", missionID)
@@ -71,16 +81,9 @@ func (m *Mothership) checkStaleMissions() error {
 				}
 				mission.Edit(
 					func(val *models.MissionAssignment) {
-						if val.Status == models.MissionAssigned || val.Progress <= 0 {
-							m.roverHasMission.Store(val.RoverID, false)
-							val.RoverID = 0
-							val.Status = models.MissionUnassigned
-							m.unassignedMissions.PushBack(missionID)
-						}
-						if val.Status == models.MissionInProgress {
-							val.Status = models.MissionUnknown
-						}
-						m.missionLastUpdate.Store(missionID, time.Time{})
+						val.Status = models.MissionUnknown
+						m.missionLastUpdate.Delete(missionID)
+						m.roverHasMission.Store(val.RoverID, false)
 					},
 				)
 			}

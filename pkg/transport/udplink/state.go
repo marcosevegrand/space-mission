@@ -26,6 +26,7 @@ type sentPacket struct {
 	lastTransmission time.Time
 	currentBackoff   time.Duration
 	retryCount       int
+	acked            bool
 	txMu             sync.Mutex
 }
 
@@ -37,11 +38,12 @@ type receivedPacket struct {
 	parityShards int
 	fecEncoder   reedsolomon.Encoder
 
-	shards       [][]byte
-	fragsRecv    []bool
-	numFragsRecv int
-	lastUpdated  time.Time
-	mu           sync.Mutex
+	shards        [][]byte
+	fragsRecv     []bool
+	numFragsRecv  int
+	lastUpdated   time.Time
+	reconstructed bool
+	mu            sync.Mutex
 }
 
 // receivedPacketKey is a composite key used to uniquely identify a message

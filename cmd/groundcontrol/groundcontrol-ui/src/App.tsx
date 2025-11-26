@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react"; // Removed useMemo
 import GridMap from "./components/GridMap";
 import { RoverCard, MissionCard } from "./components/Cards";
 import {
@@ -24,7 +24,6 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // UPDATED: Only fetch Rovers and Missions (Pairs endpoint is gone)
         const [roverRes, missionRes] = await Promise.all([
           fetch(`${API_URL}/api/rovers`),
           fetch(`${API_URL}/api/missions`),
@@ -48,18 +47,7 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- DERIVE ASSIGNMENTS ---
-  // Create a quick lookup map (RoverID -> MissionID) based on the missions list
-  const roverAssignments = useMemo(() => {
-    const map = new Map<number, number>();
-    missions.forEach((m) => {
-      // Assuming 0 means unassigned in Go, so we check for > 0
-      if (m.RoverID > 0) {
-        map.set(m.RoverID, m.MissionID);
-      }
-    });
-    return map;
-  }, [missions]);
+  // Note: roverAssignments map is no longer needed since Telemetry has MissionID directly
 
   // --- Filter & Sort Logic ---
   const filteredRovers = rovers
@@ -134,8 +122,7 @@ function App() {
               <RoverCard
                 key={r.RoverID}
                 rover={r}
-                // UPDATED: Use the calculated map
-                assignedMissionId={roverAssignments.get(r.RoverID)}
+                // UPDATED: No prop needed here anymore
               />
             ))}
           </div>

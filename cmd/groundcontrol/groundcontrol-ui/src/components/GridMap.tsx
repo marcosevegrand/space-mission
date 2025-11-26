@@ -19,10 +19,7 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // --- Responsive Canvas State ---
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-
-  // --- Camera State ---
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -30,23 +27,19 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
 
   const BASE_PIXELS_PER_UNIT = 20;
 
-  // --- 1. Handle Window/Panel Resize ---
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         setDimensions({ width, height });
       }
     });
-
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
   }, []);
 
-  // --- Interaction Handlers ---
   const handleMouseDown = (e: MouseEvent) => {
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -54,10 +47,7 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging) return;
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
-    });
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   };
 
   const handleMouseUp = () => setIsDragging(false);
@@ -69,7 +59,7 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
     });
   };
 
-  // --- Drawing Logic ---
+  // --- DRAWING LOGIC ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || dimensions.width === 0 || dimensions.height === 0) return;
@@ -79,37 +69,28 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
 
     const width = dimensions.width;
     const height = dimensions.height;
-
     const currentScale = BASE_PIXELS_PER_UNIT * zoom;
 
-    // Transform: World -> Screen
     const toScreen = (x: number, y: number) => ({
       x: width / 2 + pan.x + x * currentScale,
-      y: height / 2 + pan.y - y * currentScale, // Inverted Y for Cartesian
+      y: height / 2 + pan.y - y * currentScale,
     });
 
-    // Transform: Screen -> World
     const toWorld = (sx: number, sy: number) => ({
       x: (sx - width / 2 - pan.x) / currentScale,
       y: (height / 2 + pan.y - sy) / currentScale,
     });
 
-    // Filter Missions: Now including Unassigned
-    const visibleMissions = missions.filter(
-      (m) =>
-        m.Status === MissionStatus.Assigned ||
-        m.Status === MissionStatus.In_Progress ||
-        m.Status === MissionStatus.Unassigned,
-    );
+    // UPDATED: No longer filtering out Unknown missions.
+    // We display all missions provided by the backend.
+    const visibleMissions = missions;
 
-    // --- Draw Frame ---
+    // Frame & Grid
     ctx.fillStyle = "#0f172a"; // Slate 900
     ctx.fillRect(0, 0, width, height);
 
-    // --- Draw Grid ---
     const topLeft = toWorld(0, 0);
     const bottomRight = toWorld(width, height);
-
     let step = 1;
     if (currentScale < 10) step = 5;
     if (currentScale < 4) step = 10;
@@ -138,37 +119,51 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
     }
     ctx.stroke();
 
-    // --- Draw Origin Axis ---
+    // Axis
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "#475569"; // Slate 600
+    ctx.strokeStyle = "#475569";
     ctx.beginPath();
-
     const origin = toScreen(0, 0);
     ctx.moveTo(origin.x, 0);
     ctx.lineTo(origin.x, height);
     ctx.moveTo(0, origin.y);
     ctx.lineTo(width, origin.y);
     ctx.stroke();
-
     ctx.fillStyle = "#64748b";
     ctx.font = "10px monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.fillText("(0,0)", origin.x + 4, origin.y - 4);
 
-    // --- Draw Missions ---
+    // --- DRAW MISSIONS ---
     visibleMissions.forEach((m) => {
-      // Color Logic
-      if (m.Status === MissionStatus.In_Progress) {
-        ctx.fillStyle = "rgba(59, 130, 246, 0.2)"; // Blue
-        ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
-      } else if (m.Status === MissionStatus.Assigned) {
-        ctx.fillStyle = "rgba(234, 179, 8, 0.1)"; // Yellow
-        ctx.strokeStyle = "rgba(234, 179, 8, 0.5)";
-      } else {
-        // Unassigned: Transparent White
-        ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+      // Mission Colors
+      switch (m.Status) {
+        case MissionStatus.Unassigned:
+          ctx.fillStyle = "rgba(255, 255, 255, 0.05)"; // White (Transparent)
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+          break;
+        case MissionStatus.Assigned:
+          ctx.fillStyle = "rgba(249, 115, 22, 0.1)"; // Orange
+          ctx.strokeStyle = "rgba(249, 115, 22, 0.5)";
+          break;
+        case MissionStatus.In_Progress:
+          ctx.fillStyle = "rgba(59, 130, 246, 0.2)"; // Blue
+          ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
+          break;
+        case MissionStatus.Failed:
+          ctx.fillStyle = "rgba(239, 68, 68, 0.2)"; // Red
+          ctx.strokeStyle = "rgba(239, 68, 68, 0.8)";
+          break;
+        case MissionStatus.Completed:
+          ctx.fillStyle = "rgba(34, 197, 94, 0.2)"; // Green
+          ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
+          break;
+        case MissionStatus.Unknown:
+        default:
+          ctx.fillStyle = "rgba(100, 116, 139, 0.1)"; // Gray (Unknown)
+          ctx.strokeStyle = "rgba(100, 116, 139, 0.5)";
+          break;
       }
 
       ctx.lineWidth = 2;
@@ -183,7 +178,6 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
           const center = toScreen(c.Center.X, c.Center.Y);
           const radiusPx = c.Radius * currentScale;
           ctx.arc(center.x, center.y, Math.max(radiusPx, 2), 0, 2 * Math.PI);
-
           labelCenter = center;
           shouldDrawLabel = true;
         }
@@ -192,15 +186,10 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
         if (r.TopLeft && r.BottomRight) {
           const p1 = toScreen(r.TopLeft.X, r.TopLeft.Y);
           const p2 = toScreen(r.BottomRight.X, r.BottomRight.Y);
-
-          const rectW = p2.x - p1.x;
-          const rectH = p2.y - p1.y;
-
-          ctx.rect(p1.x, p1.y, rectW, rectH);
-
+          ctx.rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
           labelCenter = {
-            x: p1.x + rectW / 2,
-            y: p1.y + rectH / 2,
+            x: p1.x + (p2.x - p1.x) / 2,
+            y: p1.y + (p2.y - p1.y) / 2,
           };
           shouldDrawLabel = true;
         }
@@ -209,9 +198,8 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
       ctx.fill();
       ctx.stroke();
 
-      // --- Subtle Label Logic (M1, M2...) ---
       if (shouldDrawLabel) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; // Subtle white
+        ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
         ctx.font = "10px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -219,7 +207,7 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
       }
     });
 
-    // --- Draw Rovers ---
+    // --- DRAW ROVERS ---
     rovers.forEach((r) => {
       const pos = toScreen(r.Position.X, r.Position.Y);
 
@@ -233,7 +221,6 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
         const dirX = vx / mag;
         const dirY = vy / mag;
         const vecEnd = { x: pos.x + dirX * 20, y: pos.y - dirY * 20 };
-
         ctx.lineTo(vecEnd.x, vecEnd.y);
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 1;
@@ -243,11 +230,21 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
 
-      if (r.OperationalState === OperationalState.Error)
-        ctx.fillStyle = "#ef4444";
-      else if (r.OperationalState === OperationalState.On_Mission)
-        ctx.fillStyle = "#3b82f6";
-      else ctx.fillStyle = "#10b981";
+      // Rover Colors
+      switch (r.OperationalState) {
+        case OperationalState.Idle:
+          ctx.fillStyle = "#f97316"; // Orange
+          break;
+        case OperationalState.On_Mission:
+          ctx.fillStyle = "#3b82f6"; // Blue
+          break;
+        case OperationalState.Error:
+          ctx.fillStyle = "#ef4444"; // Red
+          break;
+        default:
+          ctx.fillStyle = "#64748b"; // Gray (Unknown)
+          break;
+      }
 
       ctx.fill();
       ctx.strokeStyle = "#fff";
@@ -291,14 +288,12 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
           <button
             onClick={() => handleZoom("in")}
             className="p-2 hover:bg-slate-700 hover:text-green-400 transition border-b border-slate-700"
-            title="Zoom In"
           >
             <Plus size={20} />
           </button>
           <button
             onClick={() => handleZoom("out")}
             className="p-2 hover:bg-slate-700 hover:text-red-400 transition"
-            title="Zoom Out"
           >
             <Minus size={20} />
           </button>

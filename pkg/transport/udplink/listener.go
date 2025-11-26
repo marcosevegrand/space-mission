@@ -5,6 +5,7 @@ package udplink
 
 import (
 	"net"
+	"sync"
 	"time"
 )
 
@@ -13,9 +14,13 @@ func (p *Peer[T]) receiveLoop() {
 	defer p.wg.Done()
 	buf := make([]byte, 65535)
 
+	var localWg sync.WaitGroup
+
+	p.lf.Write("[EVENT] receive loop started")
 	for {
 		select {
 		case <-p.stopChan:
+			localWg.Wait()
 			p.lf.Write("[EVENT] Listener loop stopped")
 			return
 		default:
@@ -37,11 +42,18 @@ func (p *Peer[T]) receiveLoop() {
 		fragmentBytes := make([]byte, n)
 		copy(fragmentBytes, buf[:n])
 
-		go func() {
+		localWg.Add(1)
+		accepted := p.workers.TrySubmit(func() {
+			defer localWg.Done()
 			err := p.processFragment(fragmentBytes, addr)
 			if err != nil {
 				p.lf.Write("[ERROR] Failed to process fragment from %s: %v", addr, err)
 			}
-		}()
+		})
+		if !accepted {
+			p.lf.Write("[WARN] Worker pool full, dropping packet from %s", addr)
+			localWg.Done()
+		}
+
 	}
 }

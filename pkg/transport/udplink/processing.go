@@ -19,15 +19,21 @@ func (p *Peer[T]) processFragment(fragment []byte, addr *net.UDPAddr) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse fragment: %w", err)
 	}
+
+	// Check if the fragment passes the code detection algorithm
 	if !f.ValidateChecksum() {
 		return fmt.Errorf("checksum mismatch for (seqNum %d, fragmentID %d)", f.seqNum, f.fragmentID)
 	}
+
+	// Split processing for ack and data fragments
 	if f.IsAck() {
 		return p.handleAck(f)
 	}
 	if f.IsData() {
 		return p.handleData(f, addr)
 	}
+
+	// Unexpected case where fragment type is unknown
 	return fmt.Errorf("unknown fragment type with flags: %d", f.flags)
 }
 
@@ -35,26 +41,39 @@ func (p *Peer[T]) processFragment(fragment []byte, addr *net.UDPAddr) error {
 // If the minimum amount of fragments for a message are acknowledged, it considers the message delivered.
 func (p *Peer[T]) handleAck(f *Fragment) error {
 	packet, exists := p.sentPackets.Load(f.seqNum)
+
+	// Check if the packet being acknowledged exists
 	if !exists {
-		return nil // ACK of unknown packet
+		return fmt.Errorf("ACK of unknown packet")
 	}
+
+	// Check if the fragment ID is within bounds
 	if int(f.fragmentID) >= len(packet.fragsAck) {
-		return fmt.Errorf("[ERROR] fragment out of bounds") // ACK out of bounds
+		return fmt.Errorf("[ERROR] fragment out of bounds (%d/%d)", f.fragmentID, len(packet.fragsAck))
 	}
 
 	packet.ackMu.Lock()
+
+	// Check if enough fragments have been acknowledged already
+	if packet.acked {
+		packet.ackMu.Unlock()
+		return nil // enough acknowledgments received, discard
+	}
+
+	// Check if the fragment has already been acknowledged
 	if packet.fragsAck[f.fragmentID] {
 		packet.ackMu.Unlock()
 		return fmt.Errorf("[WARN] duplicate ACK") // duplicate ACK
 	}
 
+	// Mark the fragment as acknowledged
 	packet.fragsAck[f.fragmentID] = true
 	packet.acksReceived++
 
-	// A message is considered delivered once enough fragments for reconstruction have been acknowledged.
-	if packet.acksReceived >= packet.requiredShards {
-		p.lf.Write("[DELIVERED] seqNum %d confirmed with %d ACKs", f.seqNum, packet.acksReceived)
-		p.sentPackets.Delete(f.seqNum)
+	// Check if enough fragments needed for reconstruction have been acknowledged
+	if packet.acksReceived == packet.requiredShards {
+		packet.acked = true // retransmission loop will be responsible for deleting this packet from map
+		p.lf.Write("[ACKED] seqNum %d confirmed with %d ACKs", f.seqNum, packet.acksReceived)
 	}
 	packet.ackMu.Unlock()
 	return nil
@@ -64,19 +83,23 @@ func (p *Peer[T]) handleAck(f *Fragment) error {
 // reassembly buffer, and attempts to reconstruct the full message if enough fragments are present.
 func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 
+	// Check for fragment metadata inconsistency (podemos provavelmente passar este para o decoder no fragment.go)
 	totalShards := int(f.dataShards + f.parityShards)
-
-	if totalShards == 0 || f.fragmentID >= uint16(totalShards) { // podemos provavelmente passar este pro decoder
+	if totalShards == 0 || f.fragmentID >= uint16(totalShards) {
 		return fmt.Errorf("invalid fragment metadata (seq %d, frag %d) from %s", f.seqNum, f.fragmentID, addr)
 	}
 
+	// Acknowledge the received fragment (regardless of whether it's duplicated)
 	if err := p.sendAck(f.seqNum, f.fragmentID, f.dataShards, f.parityShards, addr); err != nil {
 		p.lf.Write("[WARN] Failed to send ACK for seq %d, frag %d: %v", f.seqNum, f.fragmentID, err)
 	}
 
+	// Build the key for the received packet map
 	senderAddr := addr.String()
 	recvKey := receivedPacketKey{sender: senderAddr, seqNum: f.seqNum}
 
+	// Get the packet from the received packet map or created it if it doesn't exist
+	// This map is a data structure responsible for storing received fragments while they wait for reassembly
 	packet, exists := p.recvPackets.Load(recvKey)
 	if !exists {
 		var enc reedsolomon.Encoder
@@ -93,17 +116,25 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 			parityShards: int(f.parityShards),
 			fecEncoder:   enc,
 
-			shards:       make([][]byte, totalShards),
-			fragsRecv:    make([]bool, totalShards),
-			numFragsRecv: 0,
-			lastUpdated:  time.Now(),
+			shards:        make([][]byte, totalShards),
+			fragsRecv:     make([]bool, totalShards),
+			numFragsRecv:  0,
+			lastUpdated:   time.Now(),
+			reconstructed: false,
 		}
 		p.recvPackets.Store(recvKey, packet)
 	}
 
 	packet.mu.Lock()
+	// Check if packet was already reconstructed
+	if packet.reconstructed {
+		packet.mu.Unlock()
+		return nil // packet already reconstructed, discard fragment
+	}
+
+	// Check if fragment is a duplicate
 	if packet.fragsRecv[f.fragmentID] {
-		return nil // Duplicate fragment
+		return nil // duplicate fragment, discard
 	}
 
 	// Add shard to shard slice for reconstruction
@@ -112,15 +143,15 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 	packet.numFragsRecv++
 	packet.lastUpdated = time.Now()
 
-	// Check if enough shards for reconstruction were received
+	// Check if enough fragments needed for reconstruction were received
 	if packet.numFragsRecv < packet.dataShards {
-		// if not, then end here
 		packet.mu.Unlock()
-		return nil
+		return nil // not enough shards for reconstruction
 	}
-	p.recvPackets.Delete(recvKey)
 
+	// Check if FEC was used
 	if packet.fecEncoder != nil {
+		// Decode shards
 		err := packet.fecEncoder.Reconstruct(packet.shards)
 		if err != nil {
 			p.lf.Write("[WARN] Reconstruction for seq %d failed despite having enough shards (%d/%d): %v",
@@ -130,7 +161,7 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 		}
 	}
 
-	p.lf.Write("[RECONSTRUCTED] seqNum %d from %s", f.seqNum, senderAddr)
+	// Reconstruct full payload
 	var fullPayload []byte
 	for i := 0; i < packet.dataShards; i++ {
 		shard := packet.shards[i]
@@ -140,26 +171,11 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 		}
 		fullPayload = append(fullPayload, shard...)
 	}
-
+	packet.reconstructed = true // cleanup loop will be responsible for deleting this packet from map
+	p.lf.Write("[RECONSTRUCTED] seqNum %d from %s", f.seqNum, senderAddr)
 	packet.mu.Unlock()
 
-	// here instead of immediately decoding and forwarding the data to the app level
-	// we place the payload on a queue to ensure in order delivery
-
-	// DEBUG
-	// Decode and Handle
-	// data, err := p.decoder(fullPayload)
-	// p.lf.Write("[DECODED] %v", data)
-	// if err != nil {
-	// 	p.lf.Write("[ERROR] Failed to decode seq %d: %v", f.seqNum, err)
-	// 	return err
-	// }
-
-	// p.lf.Write("[DELIVERED] seq %d from %s", f.seqNum, senderAddr)
-
-	// // Hand off to application
-	// go p.handler(data, senderAddr)
-
+	// Get sender packet queue
 	packetQueue, _ := p.recvQueue.LoadOrCompute(
 		addr.String(),
 		func() (*safe.List[payload], bool) {
@@ -172,7 +188,10 @@ func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
 		seqNum: f.seqNum,
 		bytes:  fullPayload,
 	}
+
+	// Add payload to queue
 	packetQueue.AddInOrder(payload)
+	p.lf.Write("[QUEUED] seqNum %d from %s", f.seqNum, senderAddr)
 
 	return nil
 }

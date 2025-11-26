@@ -9,10 +9,8 @@ import (
 
 // These constants are not realistic values for a rover and are intended for simulation purposes only.
 const (
-	maxSpeed             = 1.0   // Maximum speed in meters per second
-	toleranceDistance    = 0.001 // Distance tolerance for reaching the target
-	probabilityOfFailure = 0.01  // Probability of motor failure per time step
-	probabilityOfWarning = 0.05  // Probability of motor warning per time step
+	maxSpeed          = 1.0   // Maximum speed in meters per second
+	toleranceDistance = 0.001 // Distance tolerance for reaching the target
 )
 
 // MotorModule simulates the rover's movement system.
@@ -37,12 +35,12 @@ func (m *MotorModule) GetHealth(deltaT time.Duration) models.HealthStatus {
 
 	randomValue := rand.Float64() * 100.0
 
-	if randomValue < probabilityOfFailure+probabilityOfWarning && m.health == models.HealthOK {
+	if randomValue < (probWarning*deltaT.Seconds()) && m.health == models.HealthOK {
 		m.health = models.HealthWarning
 		return m.health
 	}
 
-	if randomValue < probabilityOfFailure {
+	if randomValue < (probCritical * deltaT.Seconds()) {
 		m.health = models.HealthCritical
 		return m.health
 	}
@@ -57,11 +55,6 @@ func (m *MotorModule) GetVelocity(
 	targetPosition models.Point,
 ) models.Velocity {
 	if deltaT == 0 {
-		return m.velocity
-	}
-
-	if m.health != models.HealthOK {
-		m.velocity = models.Velocity{X: 0, Y: 0}
 		return m.velocity
 	}
 

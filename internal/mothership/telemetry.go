@@ -9,8 +9,7 @@ import (
 
 func (m *Mothership) telemetryHandler(telemetry *models.Telemetry, senderAddr string) error {
 	// 1. Get the existing container, OR create a new one if it doesn't exist.
-	// This is atomic.
-	container, _ := m.roverTelemetry.LoadOrCompute(
+	container, loaded := m.roverTelemetry.LoadOrCompute(
 		telemetry.RoverID,
 
 		func() (*safe.Var[models.Telemetry], bool) {
@@ -18,15 +17,13 @@ func (m *Mothership) telemetryHandler(telemetry *models.Telemetry, senderAddr st
 		},
 	)
 
-	// 2. Update the value INSIDE the existing container.
-	// This acquires the lock on the specific rover, updates the data, and releases.
-	container.Set(*telemetry)
+	// 2. If telemetry for the rover already exists, update the value INSIDE the existing container.
+	if loaded {
+		container.Set(*telemetry)
+	}
 
 	// 3. Update telemetry freshness
 	m.roverLastUpdate.Store(telemetry.RoverID, time.Now())
-
-	// Debug print
-	// fmt.Println(telemetry)
 
 	return nil
 }

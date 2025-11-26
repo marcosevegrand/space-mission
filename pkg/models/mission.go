@@ -29,7 +29,7 @@ func (m *MissionRequest) String() string {
 // Contains all information needed for the rover to execute the mission.
 type MissionAssignment struct {
 	MissionID       uint16         // Unique identifier for the mission
-	RoverID         uint16         // Unique identifier for the rover assigned to the mission (0 reserved for no rover assigned)
+	RoverID         uint16         // Unique identifier for the rover assigned to the mission (0 reserved for no rover)
 	Task            Task           // Type of task to perform
 	Area            GeographicArea // Geographic area where the mission should be performed
 	Status          MissionStatus  // Current status of the mission

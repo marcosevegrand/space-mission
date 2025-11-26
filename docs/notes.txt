@@ -4,6 +4,10 @@ logo no mission update teriamos de ter um field data []byte para conter os dados
 assim sendo teriamos de ter um codec para esses dados, sem se quer me estar a referir ao codec necessário para
 serializar os dados para enviar na rede
 
+Problemas futuros:
+- ACKs individuais poderiam ser compactados num Comulative ACK para nao spammer o sender de ACKs
+
+
 
 O que falta:
 - implementar os testes para cada componente do projeto [PENDING]

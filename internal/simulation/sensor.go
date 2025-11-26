@@ -51,12 +51,12 @@ func (s *SensorModule) GetHealth(deltaT time.Duration) models.HealthStatus {
 
 	randomValue := rand.Float64() * 100.0
 
-	if randomValue < 0.01+0.05 && s.health == models.HealthOK {
+	if randomValue < (probWarning*deltaT.Seconds()) && s.health == models.HealthOK {
 		s.health = models.HealthWarning
 		return s.health
 	}
 
-	if randomValue < 0.01 {
+	if randomValue < (probCritical * deltaT.Seconds()) {
 		s.health = models.HealthCritical
 		return s.health
 	}

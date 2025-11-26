@@ -28,6 +28,7 @@ type spatialVars struct {
 }
 
 type missionVars struct {
+	executionID  uint16                           // ID of the mission currently executing (0 is no mission is executing)
 	assignment   models.MissionAssignment         // Current mission assignment
 	path         *safe.List[models.Point]         // Path to the target position
 	startTime    time.Time                        // Start time of the current mission execution
@@ -87,6 +88,7 @@ func NewComputeElement(
 	c.spatial = safe.NewVar(spatial)
 
 	mission := missionVars{
+		executionID:  0,
 		assignment:   models.MissionAssignment{},
 		path:         safe.NewList[models.Point](),
 		startTime:    time.Time{},
@@ -193,6 +195,12 @@ func (c *ComputeElement) GetTelemetry() (*models.Telemetry, error) {
 		},
 	)
 
+	c.mission.View(
+		func(val *missionVars) {
+			telemetry.MissionID = val.assignment.MissionID
+		},
+	)
+
 	telemetry.Timestamp = time.Now()
 
 	return telemetry, nil
@@ -224,6 +232,16 @@ func (c *ComputeElement) StartMission() error {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
+		c.mission.Edit(
+			func(val *missionVars) {
+				val.executionID = val.assignment.MissionID
+			},
+		)
+		defer c.mission.Edit(
+			func(val *missionVars) {
+				val.executionID = 0
+			},
+		)
 		err := c.executeMissionLoop()
 		if err != nil {
 			log.Printf("Error executing mission loop: %v", err)

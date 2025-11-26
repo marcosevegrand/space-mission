@@ -10,6 +10,7 @@ import (
 // during rover operations on the planet surface.
 type Telemetry struct {
 	RoverID           uint16           // Unique identifier for the rover
+	MissionID         uint16           // Unique identifier for the mission currently executing (0 reserved for no mission)
 	Position          Point            // Current geographic coordinates
 	OperationalState  OperationalState // Current operational mode
 	BatteryPercentage float64          // Battery percentage (0-100)
@@ -24,7 +25,9 @@ func (t *Telemetry) String() string {
 		return "<nil Telemetry>"
 	}
 	return fmt.Sprintf(
-		"-- Rover Telemetry (ID: %d) --\n"+
+		"-- Rover Telemetry --\n"+
+			"RoverID:             %d\n"+
+			"MissionID:           %d\n"+
 			"  Timestamp:         %s\n"+
 			"  State:             %s\n"+
 			"  Position:          (%.3f, %.3f)\n"+
@@ -33,6 +36,7 @@ func (t *Telemetry) String() string {
 			"  Temperature:       %.2f°C\n"+
 			"  System Health:     %v",
 		t.RoverID,
+		t.MissionID,
 		t.Timestamp.Format("2006-01-02 15:04:05"),
 		t.OperationalState,
 		t.Position.X, t.Position.Y,

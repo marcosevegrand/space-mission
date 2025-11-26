@@ -21,7 +21,7 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 		return fmt.Errorf("failed to resolve address %s: %w", addrStr, err)
 	}
 
-	p.lf.Write("[SEND] to %s | %v", destAddr.String(), data)
+	p.lf.Write("[SEND] to %s\n%v", destAddr, data)
 
 	payload, err := p.encoder(data)
 	if err != nil {

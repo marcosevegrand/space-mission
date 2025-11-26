@@ -21,41 +21,32 @@ import {
   Square,
   Clock,
   Target,
+  Bot,
 } from "lucide-react";
 
 // --- HELPER: Duration Formatter ---
 const formatDuration = (totalSeconds: number) => {
   const seconds = Math.floor(totalSeconds) / 1_000_000_000;
 
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
+  if (seconds < 60) return `${seconds}s`;
 
   const days = Math.floor(seconds / (3600 * 24));
   const hours = Math.floor((seconds % (3600 * 24)) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
 
-  if (days > 0) {
-    return `${days}d ${hours}h ${minutes}m ${secs}s`;
-  }
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${secs}s`;
-  }
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${secs}s`;
+  if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
   return `${minutes}m ${secs}s`;
 };
 
 // --- ROVER CARD ---
-// Updated Interface: Now accepts assignedMissionId as an optional prop
-export function RoverCard({
-  rover,
-  assignedMissionId,
-}: {
-  rover: Telemetry;
-  assignedMissionId?: number;
-}) {
+// UPDATED: Removed 'assignedMissionId' prop
+export function RoverCard({ rover }: { rover: Telemetry }) {
   const getStatusColor = (s: OperationalState) => {
     switch (s) {
+      case OperationalState.Idle:
+        return "text-orange-400 border-orange-500";
       case OperationalState.On_Mission:
         return "text-blue-400 border-blue-500";
       case OperationalState.Error:
@@ -63,7 +54,7 @@ export function RoverCard({
       case OperationalState.Unknown:
         return "text-slate-400 border-slate-500";
       default:
-        return "text-green-400 border-green-500";
+        return "text-slate-400 border-slate-500";
     }
   };
 
@@ -78,18 +69,18 @@ export function RoverCard({
         </span>
       </div>
 
-      {/* NEW SECTION: Mission Assignment Display */}
       <div className="mb-2 pb-2 border-b border-slate-700/50 flex items-center justify-between text-xs font-mono">
         <div className="flex items-center gap-1.5 text-slate-400">
           <Target size={12} />
           <span>MISSION:</span>
         </div>
-        {assignedMissionId ? (
+        {/* UPDATED: Reading directly from Telemetry */}
+        {rover.MissionID > 0 ? (
           <span className="text-blue-300 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-900/50">
-            #{assignedMissionId}
+            #{rover.MissionID}
           </span>
         ) : (
-          <span className="text-slate-600">NONE</span>
+          <span className="text-slate-600">-</span>
         )}
       </div>
 
@@ -170,10 +161,20 @@ function HealthIcon({
 // --- MISSION CARD ---
 export function MissionCard({ mission }: { mission: MissionAssignment }) {
   const getProgressColor = (status: MissionStatus) => {
-    if (status === MissionStatus.Failed) return "bg-red-500";
-    if (status === MissionStatus.Completed) return "bg-green-500";
-    if (status === MissionStatus.Unassigned) return "bg-slate-600";
-    return "bg-blue-500";
+    switch (status) {
+      case MissionStatus.Unassigned:
+        return "bg-slate-200";
+      case MissionStatus.Assigned:
+        return "bg-orange-500";
+      case MissionStatus.In_Progress:
+        return "bg-blue-500";
+      case MissionStatus.Failed:
+        return "bg-red-500";
+      case MissionStatus.Completed:
+        return "bg-green-500";
+      default:
+        return "bg-slate-500";
+    }
   };
 
   const renderAreaInfo = () => {
@@ -188,12 +189,10 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
           <span className="text-slate-300 flex items-center gap-1">
             <CircleIcon size={10} /> CIRCLE
           </span>
-
           <span className="text-slate-500">CENTER:</span>
           <span className="text-slate-300">
             [{c.Center.X.toFixed(0)}, {c.Center.Y.toFixed(0)}]
           </span>
-
           <span className="text-slate-500">RADIUS:</span>
           <span className="text-slate-300">{c.Radius.toFixed(0)}m</span>
         </div>
@@ -209,12 +208,10 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
           <span className="text-slate-300 flex items-center gap-1">
             <Square size={10} /> RECT
           </span>
-
           <span className="text-slate-500">TOP-L:</span>
           <span className="text-slate-300">
             [{r.TopLeft.X.toFixed(0)}, {r.TopLeft.Y.toFixed(0)}]
           </span>
-
           <span className="text-slate-500">BOT-R:</span>
           <span className="text-slate-300">
             [{r.BottomRight.X.toFixed(0)}, {r.BottomRight.Y.toFixed(0)}]
@@ -227,7 +224,6 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
 
   return (
     <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-3 hover:border-slate-500 transition group">
-      {/* Header */}
       <div className="flex justify-between items-center mb-2">
         <h3 className="font-bold text-slate-200">
           MISSION #{mission.MissionID}
@@ -237,7 +233,20 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
         </span>
       </div>
 
-      {/* Status & Duration */}
+      <div className="mb-2 pb-2 border-b border-slate-700/50 flex items-center justify-between text-xs font-mono">
+        <div className="flex items-center gap-1.5 text-slate-400">
+          <Bot size={12} />
+          <span>ASSIGNED ROVER:</span>
+        </div>
+        {mission.RoverID > 0 ? (
+          <span className="text-blue-300 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-900/50">
+            #{mission.RoverID}
+          </span>
+        ) : (
+          <span className="text-slate-600">-</span>
+        )}
+      </div>
+
       <div className="flex justify-between items-center text-xs text-slate-500 mb-3 font-mono bg-slate-900/30 p-1.5 rounded">
         <span className="font-bold text-slate-400">
           {MissionStatus[mission.Status]}
@@ -248,7 +257,6 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
         </span>
       </div>
 
-      {/* Geographic Data Block */}
       <div className="mb-3 p-2 bg-slate-900 rounded border border-slate-700/50 text-[10px] font-mono">
         <div className="flex items-center gap-1 text-slate-400 mb-2 border-b border-slate-700 pb-1">
           <MapPin size={10} /> GEOGRAPHIC TARGET
@@ -256,7 +264,6 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
         {renderAreaInfo()}
       </div>
 
-      {/* Progress Bar */}
       <div className="flex items-center gap-2">
         <div className="flex-1 bg-slate-900 rounded-full h-1.5">
           <div

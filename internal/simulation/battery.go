@@ -7,10 +7,8 @@ import (
 )
 
 type PowerModule struct {
-	health               models.HealthStatus
-	batteryPercentage    float64 // Battery charge percentage (0-100%)
-	probabilityOfFailure float64 // Probability of power module failure per time step
-	probabilityOfWarning float64 // Probability of power module warning per time step
+	health            models.HealthStatus
+	batteryPercentage float64 // Battery charge percentage (0-100%)
 }
 
 func NewPowerModule() *PowerModule {
@@ -27,12 +25,12 @@ func (p *PowerModule) GetHealth(deltaT time.Duration) models.HealthStatus {
 
 	randomValue := rand.Float64() * 100.0
 
-	if randomValue < p.probabilityOfFailure+p.probabilityOfWarning && p.health == models.HealthOK {
+	if randomValue < (probWarning*deltaT.Seconds()) && p.health == models.HealthOK {
 		p.health = models.HealthWarning
 		return p.health
 	}
 
-	if randomValue < p.probabilityOfFailure {
+	if randomValue < (probCritical * deltaT.Seconds()) {
 		p.health = models.HealthCritical
 		return p.health
 	}

@@ -9,6 +9,8 @@ func (p *Peer[T]) cleanupLoop() {
 	ticker := time.NewTicker(DefaultLoopTick)
 	defer ticker.Stop()
 
+	p.lf.Write("[EVENT] cleanup loop started")
+
 	for {
 		select {
 		case <-p.stopChan:
@@ -37,7 +39,11 @@ func (p *Peer[T]) performCleanup() {
 
 			packet.mu.Lock()
 			if now.Sub(packet.lastUpdated) > recvTTL {
-				p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
+				if packet.reconstructed {
+					p.lf.Write("[CLEANUP] Removing reconstructed packet seq %d from %s", key.seqNum, key.sender)
+				} else {
+					p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
+				}
 				p.recvPackets.Delete(key)
 			}
 			packet.mu.Unlock()

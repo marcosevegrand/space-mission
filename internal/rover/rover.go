@@ -69,17 +69,12 @@ func (r *Rover) missionHandler(msg models.MissionMessage, senderAddr string) err
 
 	switch msg := msg.(type) {
 	case *models.MissionAssignment:
-		// Temporary print for debugging
-		// fmt.Println(msg)
-
-		updateFrequency := msg.UpdateFrequency
 		r.computeElement.SetMissionAssignment(msg)
 		err := r.computeElement.StartMission()
 		if err != nil {
 			return fmt.Errorf("failed to start mission: %v", err)
 		}
-		r.sendMissionUpdates(updateFrequency, senderAddr)
-
+		r.sendMissionUpdates(msg.UpdateFrequency, senderAddr)
 	default:
 		return fmt.Errorf("unexpected or unknown mission message type")
 	}

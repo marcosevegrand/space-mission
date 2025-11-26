@@ -18,6 +18,7 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 			assignment = val.assignment
 		},
 	)
+
 	c.spatial.View(
 		func(val *spatialVars) {
 			currentPosition = val.currentPosition
@@ -32,11 +33,29 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 					val.systemHealth.Sensors == models.HealthCritical ||
 					val.systemHealth.PowerSystem == models.HealthCritical {
 					end = true
-					return
 				}
 			}
 		},
 	)
+
+	if end {
+		c.mission.Edit(
+			func(val *missionVars) {
+				val.path.Clear()
+				val.assignment.Status = models.MissionFailed
+				update := models.MissionUpdate{
+					RoverID:   c.roverID,
+					MissionID: val.assignment.MissionID,
+					Status:    val.assignment.Status,
+					Progress:  val.assignment.Progress,
+					Data:      "[MISSION FAILURE: ROVER MODULE(S) FAILED]",
+					Timestamp: time.Now(),
+				}
+				val.updateBuf.PushBack(update)
+			},
+		)
+		return end, fmt.Errorf("one or more rover modules failed")
+	}
 
 	switch assignment.Status {
 	case models.MissionAssigned:

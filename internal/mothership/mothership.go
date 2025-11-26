@@ -25,8 +25,8 @@ type Mothership struct {
 	roverHasMission *xsync.Map[uint16, bool]                        // it stores whether each rover has a mission or not
 
 	// stale configs
-	staleMission time.Duration // should be set to a reasonable value that considers the average mission update frequency and RTT
-	staleRover   time.Duration // should be set to a reasonable value that considers the average mission update frequency and RTT
+	staleMission int           // multiplier for mission update frequency that sets when to consider one stale (recommended: >5)
+	staleRover   time.Duration // time interval without telemetry updates to consider one stale
 
 	telemetryStream *tcpstream.Server[*models.Telemetry]
 	missionLink     *udplink.Peer[models.MissionMessage]
@@ -39,7 +39,7 @@ type Mothership struct {
 func NewMothership(
 	mothershipTSAddress string,
 	mothershipMLAddress string,
-	staleMission time.Duration,
+	staleMission int,
 	staleRover time.Duration,
 ) (*Mothership, error) {
 
@@ -106,6 +106,7 @@ func (m *Mothership) Start() error {
 	}
 	fmt.Println("[START] MISSION LINK")
 
+	// THIS IS HOW THE HTTP SERVER NEEDS TO LOOK IN THE FUTURE
 	// err := m.httpServer.Start()
 	// if err != nil {
 	// 	return err

@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// const (
+// 	roverID                  = 1
+// 	mothershipTSAddress      = "localhost:8000"
+// 	mothershipMLAddress      = "localhost:9000"
+// 	roverMLAddress           = "localhost:9001"
+// 	telemetryUpdateFrequency = 100 * time.Millisecond
+// 	missionRequestFrequency  = 5 * time.Second
+// )
+
 const (
 	roverID                  = 2
 	mothershipTSAddress      = "localhost:8000"
@@ -17,6 +26,15 @@ const (
 	telemetryUpdateFrequency = 100 * time.Millisecond
 	missionRequestFrequency  = 5 * time.Second
 )
+
+// const (
+// 	roverID                  = 3
+// 	mothershipTSAddress      = "localhost:8000"
+// 	mothershipMLAddress      = "localhost:9000"
+// 	roverMLAddress           = "localhost:9003"
+// 	telemetryUpdateFrequency = 100 * time.Millisecond
+// 	missionRequestFrequency  = 5 * time.Second
+// )
 
 func main() {
 	r, err := rover.NewRover(
