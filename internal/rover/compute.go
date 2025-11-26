@@ -36,8 +36,6 @@ type missionVars struct {
 }
 
 type ComputeElement struct {
-	// Compute frequency
-	clock time.Time
 
 	// Identifier
 	roverID uint16 // Unique identifier for the rover (never overwritten)
@@ -72,9 +70,9 @@ func NewComputeElement(
 	state := stateVars{
 		operationalState: models.StateIdle,
 		systemHealth: models.SystemHealth{
-			Motors:      c.motor.GetHealth(),
-			Sensors:     c.sensor.GetHealth(),
-			PowerSystem: c.power.GetHealth(),
+			Motors:      c.motor.GetHealth(0),
+			Sensors:     c.sensor.GetHealth(0),
+			PowerSystem: c.power.GetHealth(0),
 		},
 		batteryPercentage: c.power.GetBatteryPercentage(0, models.StateIdle),
 		temperature:       c.sensor.GetInternalTemperature(0),
@@ -154,9 +152,9 @@ func (c *ComputeElement) compute() error {
 	c.state.Edit(
 		func(val *stateVars) {
 			val.systemHealth = models.SystemHealth{
-				Motors:      c.motor.GetHealth(),
-				Sensors:     c.sensor.GetHealth(),
-				PowerSystem: c.power.GetHealth(),
+				Motors:      c.motor.GetHealth(clockFrequency),
+				Sensors:     c.sensor.GetHealth(clockFrequency),
+				PowerSystem: c.power.GetHealth(clockFrequency),
 			}
 			val.batteryPercentage = c.power.GetBatteryPercentage(clockFrequency, val.operationalState)
 			val.temperature = c.sensor.GetInternalTemperature(clockFrequency)
@@ -275,7 +273,17 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 
 	opState := c.state.Get().operationalState
 
-	if opState == models.StateIdle {
+	c.state.View(
+		func(val *stateVars) {
+			if val.systemHealth.Motors == models.HealthCritical ||
+				val.systemHealth.Sensors == models.HealthCritical ||
+				val.systemHealth.PowerSystem == models.HealthCritical {
+				skip = true
+			}
+		},
+	)
+
+	if !skip && opState == models.StateIdle {
 		return models.MissionRequest{
 			RoverID:   c.roverID,
 			Position:  c.spatial.Get().currentPosition,

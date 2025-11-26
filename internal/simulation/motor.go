@@ -2,14 +2,17 @@ package simulation
 
 import (
 	"math"
+	"math/rand/v2"
 	"space-mission/pkg/models"
 	"time"
 )
 
 // These constants are not realistic values for a rover and are intended for simulation purposes only.
 const (
-	maxSpeed          = 1.0   // Maximum speed in meters per second
-	toleranceDistance = 0.001 // Distance tolerance for reaching the target
+	maxSpeed             = 1.0   // Maximum speed in meters per second
+	toleranceDistance    = 0.001 // Distance tolerance for reaching the target
+	probabilityOfFailure = 0.01  // Probability of motor failure per time step
+	probabilityOfWarning = 0.05  // Probability of motor warning per time step
 )
 
 // MotorModule simulates the rover's movement system.
@@ -27,7 +30,23 @@ func NewMotorModule() *MotorModule {
 }
 
 // GetHealth returns the current health status of the motor module.
-func (m *MotorModule) GetHealth() models.HealthStatus {
+func (m *MotorModule) GetHealth(deltaT time.Duration) models.HealthStatus {
+	if deltaT == 0 {
+		return m.health
+	}
+
+	randomValue := rand.Float64() * 100.0
+
+	if randomValue < probabilityOfFailure+probabilityOfWarning && m.health == models.HealthOK {
+		m.health = models.HealthWarning
+		return m.health
+	}
+
+	if randomValue < probabilityOfFailure {
+		m.health = models.HealthCritical
+		return m.health
+	}
+
 	return m.health
 }
 

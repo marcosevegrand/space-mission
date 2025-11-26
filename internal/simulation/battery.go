@@ -1,13 +1,16 @@
 package simulation
 
 import (
+	"math/rand/v2"
 	"space-mission/pkg/models"
 	"time"
 )
 
 type PowerModule struct {
-	health            models.HealthStatus
-	batteryPercentage float64 // Battery charge percentage (0-100%)
+	health               models.HealthStatus
+	batteryPercentage    float64 // Battery charge percentage (0-100%)
+	probabilityOfFailure float64 // Probability of power module failure per time step
+	probabilityOfWarning float64 // Probability of power module warning per time step
 }
 
 func NewPowerModule() *PowerModule {
@@ -17,7 +20,23 @@ func NewPowerModule() *PowerModule {
 	}
 }
 
-func (p *PowerModule) GetHealth() models.HealthStatus {
+func (p *PowerModule) GetHealth(deltaT time.Duration) models.HealthStatus {
+	if deltaT == 0 {
+		return p.health
+	}
+
+	randomValue := rand.Float64() * 100.0
+
+	if randomValue < p.probabilityOfFailure+p.probabilityOfWarning && p.health == models.HealthOK {
+		p.health = models.HealthWarning
+		return p.health
+	}
+
+	if randomValue < p.probabilityOfFailure {
+		p.health = models.HealthCritical
+		return p.health
+	}
+
 	return p.health
 }
 
