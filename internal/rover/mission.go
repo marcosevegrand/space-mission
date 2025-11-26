@@ -25,6 +25,19 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 		},
 	)
 
+	c.state.View(
+		func(val *stateVars) {
+			{
+				if val.systemHealth.Motors == models.HealthCritical ||
+					val.systemHealth.Sensors == models.HealthCritical ||
+					val.systemHealth.PowerSystem == models.HealthCritical {
+					end = true
+					return
+				}
+			}
+		},
+	)
+
 	switch assignment.Status {
 	case models.MissionAssigned:
 

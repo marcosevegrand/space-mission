@@ -8,9 +8,6 @@ import (
 )
 
 const (
-	// Movement constants
-	// planetRadius = 3390000.0 // Planet's radius in meters
-
 	// Internal temperature constants
 	initialInternalTemperature     = 30.0 // Rover's internal temperature in Celsius
 	maxInternalTemperatureVariance = 5.0  // Maximum internal temperature variance in Celsius

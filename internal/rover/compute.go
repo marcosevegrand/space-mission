@@ -36,8 +36,6 @@ type missionVars struct {
 }
 
 type ComputeElement struct {
-	// Compute frequency
-	clock time.Time
 
 	// Identifier
 	roverID uint16 // Unique identifier for the rover (never overwritten)
@@ -275,7 +273,17 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 
 	opState := c.state.Get().operationalState
 
-	if opState == models.StateIdle {
+	c.state.View(
+		func(val *stateVars) {
+			if val.systemHealth.Motors == models.HealthCritical ||
+				val.systemHealth.Sensors == models.HealthCritical ||
+				val.systemHealth.PowerSystem == models.HealthCritical {
+				skip = true
+			}
+		},
+	)
+
+	if !skip && opState == models.StateIdle {
 		return models.MissionRequest{
 			RoverID:   c.roverID,
 			Position:  c.spatial.Get().currentPosition,
