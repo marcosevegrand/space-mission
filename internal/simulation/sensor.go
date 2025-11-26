@@ -9,7 +9,7 @@ import (
 
 const (
 	// Movement constants
-	planetRadius = 3390000.0 // Planet's radius in meters
+	// planetRadius = 3390000.0 // Planet's radius in meters
 
 	// Internal temperature constants
 	initialInternalTemperature     = 30.0 // Rover's internal temperature in Celsius
@@ -26,7 +26,7 @@ type SensorModule struct {
 	carbon              float64
 	hydrogen            float64
 	oxygen              float64
-	Minerals            []string
+	minerals            []string
 }
 
 type ImageMetadata struct {
@@ -47,7 +47,23 @@ func NewSensorModule() *SensorModule {
 	}
 }
 
-func (s *SensorModule) GetHealth() models.HealthStatus {
+func (s *SensorModule) GetHealth(deltaT time.Duration) models.HealthStatus {
+	if deltaT == 0 {
+		return s.health
+	}
+
+	randomValue := rand.Float64() * 100.0
+
+	if randomValue < 0.01+0.05 && s.health == models.HealthOK {
+		s.health = models.HealthWarning
+		return s.health
+	}
+
+	if randomValue < 0.01 {
+		s.health = models.HealthCritical
+		return s.health
+	}
+
 	return s.health
 }
 
@@ -176,7 +192,7 @@ func (s *SensorModule) SimulateSampleAnalysis() {
 	s.carbon = rand.Float64() * 50
 	s.hydrogen = rand.Float64() * 50
 	s.oxygen = rand.Float64() * 50
-	s.Minerals = minerals
+	s.minerals = minerals
 }
 
 func (s *SensorModule) GetCarbon() float64 {
@@ -192,7 +208,7 @@ func (s *SensorModule) GetOxygen() float64 {
 }
 
 func (s *SensorModule) GetMinerals() []string {
-	return s.Minerals
+	return s.minerals
 }
 
 // SimulateTerrainMapping simulates terrain mapping data
