@@ -204,22 +204,52 @@ func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Po
 
 	switch task {
 	case models.TaskEnvironmentalMonitoring:
-		data = fmt.Sprintf("[%s - (%0.3f,%0.3f)] Temperature: %dºC | Humidity: %d%% | Pressure: %dPa | Radiation: %dµW/cm²",
-			timestamp, currentPosition.X, currentPosition.Y, 40, 60, 101325, 10)
-	case models.TaskImageCapture:
-		data = fmt.Sprintf("[%s - (%0.3f,%0.3f)] Image captured successfully and stored in rover's storage",
-			timestamp, currentPosition.X, currentPosition.Y)
-	case models.TaskSampleAnalysis:
-		data = fmt.Sprintf("[%s - (%0.3f,%0.3f)] Composition: Fe-%.1f%%, Si-%.1f%%, O-%.1f%%, Mg-%.1f%%, Ca-%.1f%%, Al-%.1f%%, S-%.1f%%, C-%.1f%%",
-			timestamp, currentPosition.X, currentPosition.Y,
-			12.5, 18.3, 43.7, 15.1, 3.2, 2.7, 2.1, 2.4)
-	case models.TaskTerrainMapping:
-		data = fmt.Sprintf("[%s - (%0.3f,%0.3f)] Terrain: Elevation=%.1fm, Slope=%.1f°, Roughness=%.2f, ObstacleDist=%.1fm, SoilType=%s",
-			timestamp, currentPosition.X, currentPosition.Y,
-			123.4, 15.7, 0.23, 4.5, "loam")
-	default:
-		return "", true
-	}
+		humidity := c.sensor.GetHumidity()
+		pressure := c.sensor.GetPressure()
+		internalTemp := int(c.sensor.GetInternalTemperature(0))
+		co2 := c.sensor.GetCO2Level()
 
-	return data, false
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] Temperature: %dºC | Humidity: %.1f%% | Pressure: %.0fPa | CO2: %.0fppm",
+			timestamp, currentPosition.X, currentPosition.Y, internalTemp, humidity, pressure*100, co2)
+		return data, false
+
+	case models.TaskImageCapture:
+		imageMeta := c.sensor.SimulateImageCapture(currentPosition)
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] %s | Res: %s | %s",
+			timestamp, currentPosition.X, currentPosition.Y,
+			imageMeta.Timestamp.Format("15:04:05"), imageMeta.Resolution, imageMeta.Description)
+		return data, false
+
+	case models.TaskSampleAnalysis:
+		c.sensor.SimulateSampleAnalysis()
+		carbon := c.sensor.GetCarbon()
+		hydrogen := c.sensor.GetHydrogen()
+		oxygen := c.sensor.GetOxygen()
+		minerals := c.sensor.GetMinerals()
+
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] C:%.1f%% H:%.1f%% O:%.1f%% | Minerals: %v",
+			timestamp, currentPosition.X, currentPosition.Y,
+			carbon, hydrogen, oxygen, minerals)
+		return data, false
+
+	case models.TaskTerrainMapping:
+		terrainData := c.sensor.SimulateTerrainMapping()
+		avgElevation := 0.0
+		count := 0
+		for i := range terrainData {
+			for j := range terrainData[i] {
+				avgElevation += terrainData[i][j]
+				count++
+			}
+		}
+		avgElevation /= float64(count)
+
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] AvgElevation=%.1fm | GridSize=%dx%d | TerrainDataGenerated=true",
+			timestamp, currentPosition.X, currentPosition.Y,
+			avgElevation, len(terrainData), len(terrainData[0]))
+		return data, false
+
+	default:
+		return data, true
+	}
 }
