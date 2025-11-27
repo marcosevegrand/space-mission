@@ -222,7 +222,7 @@ func (s *SensorModule) SimulateTerrainMapping() [][]float64 {
 	return terrainData
 }
 
-func SimulateImageCapture(position models.Point) ImageMetadata {
+func (s *SensorModule) SimulateImageCapture(position models.Point) ImageMetadata {
 	resolutions := []string{"1920x1080", "1280x720", "640x480"}
 	descriptions := []string{
 		"Imagem do terreno rochoso",
