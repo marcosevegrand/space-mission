@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	// The port we want the website to run on (must be different from Mothership)
+	// The port we want the website to run on
 	port := ":3000"
 
 	// 1. Create a file server handler

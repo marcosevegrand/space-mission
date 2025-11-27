@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -11,16 +12,23 @@ import (
 )
 
 const (
-	mothershipTSAddress = "localhost:8000"
-	mothershipMLAddress = "localhost:9000"
-	staleMission        = 5
-	staleRover          = 5 * time.Second
+	staleMission = 3
+	staleRover   = 5 * time.Second
 )
 
 func main() {
+	// Define flags with default values
+	mothershipTSAddress := flag.String("ts-addr", "10.0.0.20:8000", "Address of the Mothership Telemetry Stream")
+	mothershipMLAddress := flag.String("ml-addr", "10.0.0.20:9000", "Address of the Mothership Mission Link")
+
+	// Parse the flags
+	flag.Parse()
+
+	log.Printf("Starting Mothership services on TS: %s, ML: %s", *mothershipTSAddress, *mothershipMLAddress)
+
 	m, err := mothership.NewMothership(
-		mothershipTSAddress,
-		mothershipMLAddress,
+		*mothershipTSAddress,
+		*mothershipMLAddress,
 		staleMission,
 		staleRover,
 	)
@@ -84,7 +92,7 @@ func main() {
 		Timestamp:       time.Now(),
 	})
 
-	// Mission 3
+	// Mission 4 (Duplicate ID fix not applied here to keep your logic, but noted as Mission 4 in comments)
 	m.AddMissionAssignment(&models.MissionAssignment{
 		MissionID: 4,
 		RoverID:   0,
@@ -114,9 +122,9 @@ func main() {
 	// Wait for an interrupt signal
 	<-sigChan
 
-	// Signal received, call r.Stop()
+	// Signal received, call Stop()
 	if err := m.Stop(); err != nil {
-		log.Printf("Error stopping rover: %v", err)
+		log.Printf("Error stopping mothership: %v", err)
 	} else {
 		log.Println("Mothership stopped successfully.")
 	}

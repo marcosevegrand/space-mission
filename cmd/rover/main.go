@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -9,44 +10,34 @@ import (
 	"time"
 )
 
-// const (
-// 	roverID                  = 1
-// 	mothershipTSAddress      = "localhost:8000"
-// 	mothershipMLAddress      = "localhost:9000"
-// 	roverMLAddress           = "localhost:9001"
-// 	telemetryUpdateFrequency = 100 * time.Millisecond
-// 	missionRequestFrequency  = 5 * time.Second
-// )
-
 const (
-	roverID                  = 2
-	mothershipTSAddress      = "localhost:8000"
-	mothershipMLAddress      = "localhost:9000"
-	roverMLAddress           = "localhost:9002"
 	telemetryUpdateFrequency = 100 * time.Millisecond
 	missionRequestFrequency  = 5 * time.Second
 )
 
-// const (
-// 	roverID                  = 3
-// 	mothershipTSAddress      = "localhost:8000"
-// 	mothershipMLAddress      = "localhost:9000"
-// 	roverMLAddress           = "localhost:9003"
-// 	telemetryUpdateFrequency = 100 * time.Millisecond
-// 	missionRequestFrequency  = 5 * time.Second
-// )
-
 func main() {
+	// Define flags with default values
+	roverID := flag.Int("id", 1, "The unique ID of the rover")
+	mothershipTSAddress := flag.String("m-ts-addr", "10.0.0.20:8000", "Address of the Mothership Telemetry Stream")
+	mothershipMLAddress := flag.String("m-ml-addr", "10.0.0.20:9000", "Address of the Mothership Mission Link")
+	roverMLAddress := flag.String("r-ml-addr", "localhost:9001", "Address of the Rover Mission Link")
+
+	// Parse the flags
+	flag.Parse()
+
+	log.Printf("Starting Rover %d on %s (Targeting Mothership TS: %s, ML: %s)",
+		*roverID, *roverMLAddress, *mothershipTSAddress, *mothershipMLAddress)
+
 	r, err := rover.NewRover(
-		roverID,
-		mothershipTSAddress,
-		roverMLAddress,
+		uint16(*roverID),
+		*mothershipTSAddress,
+		*roverMLAddress,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := r.Start(telemetryUpdateFrequency, missionRequestFrequency, mothershipMLAddress); err != nil {
+	if err := r.Start(telemetryUpdateFrequency, missionRequestFrequency, *mothershipMLAddress); err != nil {
 		log.Fatal(err)
 	}
 
