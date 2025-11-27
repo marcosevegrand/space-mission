@@ -10,7 +10,7 @@ import {
   MissionStatus,
   FleetStatus,
 } from "./types";
-import { Wifi, Filter, Satellite, CheckCircle2, XCircle } from "lucide-react";
+import { Wifi, Filter, Satellite, CheckCircle2, Hammer } from "lucide-react"; // Replaced XCircle with Hammer
 
 const API_URL = window.ENV?.API_URL || "http://localhost:8080";
 
@@ -25,7 +25,7 @@ function App() {
   const [roverFilter, setRoverFilter] = useState<string>("ALL");
   const [missionFilter, setMissionFilter] = useState<string>("ALL");
 
-  // Ref to prevent stacking requests if the network is slower than 100ms
+  // Ref to prevent stacking requests
   const isFetching = useRef(false);
 
   const fetchData = useCallback(async () => {
@@ -64,10 +64,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Initial fetch on mount (next tick to satisfy linter)
     const initial = setTimeout(() => fetchData(), 0);
-
-    // High frequency polling (100ms)
     const interval = setInterval(fetchData, 100);
 
     return () => {
@@ -143,19 +140,20 @@ function App() {
                       className={`flex flex-col items-center justify-center p-2 rounded border transition-colors ${
                         isAvailable
                           ? "bg-green-900/20 border-green-900/50"
-                          : "bg-red-900/10 border-red-900/30 opacity-60"
+                          : "bg-slate-800 border-slate-700 opacity-75" // Grey background for busy
                       }`}
-                      title={isAvailable ? "Available" : "Busy/Assigned"}
+                      title={isAvailable ? "Available" : "Busy/Working"}
                     >
                       <div className="mb-1">
                         {isAvailable ? (
                           <CheckCircle2 size={16} className="text-green-500" />
                         ) : (
-                          <XCircle size={16} className="text-red-500" />
+                          // REPLACED: Red X -> Grey Hammer
+                          <Hammer size={16} className="text-slate-400" />
                         )}
                       </div>
                       <span
-                        className={`text-xs font-bold font-mono ${isAvailable ? "text-green-100" : "text-slate-500"}`}
+                        className={`text-xs font-bold font-mono ${isAvailable ? "text-green-100" : "text-slate-400"}`}
                       >
                         R{r.RoverID}
                       </span>

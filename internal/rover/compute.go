@@ -197,7 +197,7 @@ func (c *ComputeElement) GetTelemetry() (*models.Telemetry, error) {
 
 	c.mission.View(
 		func(val *missionVars) {
-			telemetry.MissionID = val.assignment.MissionID
+			telemetry.MissionID = val.executionID
 		},
 	)
 
@@ -244,10 +244,7 @@ func (c *ComputeElement) StartMission() error {
 		)
 
 		// Initiate mission execution loop
-		err := c.executeMissionLoop()
-		if err != nil {
-			log.Printf("Error executing mission loop: %v", err)
-		}
+		c.executeMissionLoop()
 
 		// Execution ended, update mission execution ID to none (0) and state to idle
 		c.mission.Edit(
@@ -265,7 +262,7 @@ func (c *ComputeElement) StartMission() error {
 	return nil
 }
 
-func (c *ComputeElement) executeMissionLoop() error {
+func (c *ComputeElement) executeMissionLoop() {
 
 	tick := time.NewTicker(clockFrequency)
 	defer tick.Stop()
@@ -273,11 +270,11 @@ func (c *ComputeElement) executeMissionLoop() error {
 	for {
 		select {
 		case <-c.stopChan:
-			return nil
+			return
 		case <-tick.C:
 			endMission := c.executeMission()
 			if endMission {
-				return nil
+				return
 			}
 		}
 	}

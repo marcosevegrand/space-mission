@@ -2,6 +2,7 @@ package udplink
 
 import (
 	"math"
+	"space-mission/pkg/utils/safe"
 	"time"
 )
 
@@ -24,65 +25,89 @@ func (p *Peer[T]) retransmissionLoop() {
 }
 
 func (p *Peer[T]) checkRetransmissions() {
-	retxConf := p.config.Retransmission
 	p.sentPackets.Range(
-		func(seqNum uint32, packet *sentPacket) bool {
-
-			// If the peer is stopping, abort the entire loop immediately.
+		func(key packetKey, pktVar *safe.Var[sentPacket]) bool {
+			// If the peer is stopping, abort immediately
 			select {
 			case <-p.stopChan:
-				return false // Stop iterating the map
+				return false
 			default:
 			}
 
-			packet.txMu.Lock()
-			// Check if the packet is already acknowledged.
-			if packet.acked {
-				p.lf.Write("[CLEANUP] removing acknowledged packet %d", seqNum)
-				p.sentPackets.Delete(seqNum)
-				packet.txMu.Unlock()
-				return true // Move to the next packet.
-			}
+			var (
+				acked   bool
+				ready   bool
+				retries int
+				timeout bool
+			)
 
-			// Check if the packet is ready for retransmission.
-			if packet.lastTransmission.IsZero() || time.Since(packet.lastTransmission) < packet.currentBackoff {
-				packet.txMu.Unlock()
-				return true // Not time to retransmit this packet yet.
-			}
-			// Check for timeout failure.
-			if retxConf.MaxRetries > 0 && packet.retryCount >= retxConf.MaxRetries {
-				p.lf.Write("[TIMEOUT] seqNum %d failed after max retries (%d)", seqNum, packet.retryCount)
-				p.sentPackets.Delete(seqNum)
-				packet.txMu.Unlock()
-				return true // Move to the next packet.
-			}
-			p.lf.Write("[RE-TX] seqNum %d (retry #%d)", seqNum, packet.retryCount)
-			packet.txMu.Unlock()
-
-			packet.ackMu.Lock()
-			for i, acked := range packet.fragsAck {
-				if !acked {
-					if err := p.sendFragment(packet.fragments[i], packet.dest); err != nil {
-						p.lf.Write("[WARN] failed to retransmit fragment %d (seqNum %d): %v", i+1, seqNum, err)
-					}
+			// Do a combined check on the packet's state
+			pktVar.View(func(pkt *sentPacket) {
+				// Check if the packet is already acknowledged
+				if pkt.acked {
+					acked = true
+					return
 				}
+				// Check if packet reached maximum retries limit
+				if p.config.Retransmission.MaxRetries != 0 && pkt.retryCount >= p.config.Retransmission.MaxRetries {
+					timeout = true
+					retries = pkt.retryCount
+					return
+				}
+				// Check if the packet is ready for retransmission
+				if !pkt.lastTransmission.IsZero() && time.Since(pkt.lastTransmission) > pkt.currentBackoff {
+					ready = true
+				}
+			})
+
+			// If the packet is acknowledged, remove it from the map
+			if acked {
+				p.lf.Write("[CLEANUP] removing acknowledged seqNum %d by %s", key.seqNum, key.addr)
+				p.sentPackets.Delete(key)
+				return true // move to the next packet
 			}
-			packet.ackMu.Unlock()
 
-			packet.txMu.Lock()
-			// Update the shared state for the next retransmission.
-			packet.retryCount++
-			packet.lastTransmission = time.Now()
+			// If the packet has timed out, remove it from the map
+			if timeout {
+				p.lf.Write("[TIMEOUT] packet %d timed out after %d retries", key.seqNum, retries)
+				p.sentPackets.Delete(key)
+				return true // move to the next packet
+			}
 
-			// Apply exponential backoff to the shared timer.
-			newBackoff := time.Duration(float64(packet.currentBackoff) *
-				math.Pow(retxConf.BackoffMultiplier, float64(packet.retryCount)))
+			// If the packet is not ready for retransmission, move to the next packet
+			if !ready {
+				return true // continue iterating the map
+			}
 
-			packet.currentBackoff = min(newBackoff, retxConf.MaxBackoff)
-			packet.txMu.Unlock()
+			// Identify the unacked fragments and retransmit them
+			pktVar.View(
+				func(pkt *sentPacket) {
+					for i, acked := range pkt.fragsAck {
+						if !acked {
+							if err := p.sendFragment(pkt.fragments[i], pkt.dest); err != nil {
+								p.lf.Write("[WARN] failed to retransmit fragment %d (seqNum %d) to %s: %v",
+									i+1, key.seqNum, key.addr, err)
+							}
+						}
+					}
+				},
+			)
+
+			// Update the shared state for next retransmission
+			pktVar.Edit(
+				func(pkt *sentPacket) {
+					pkt.retryCount++
+					pkt.lastTransmission = time.Now()
+
+					// Apply exponential backoff to the shared timer.
+					newBackoff := time.Duration(float64(pkt.currentBackoff) *
+						math.Pow(p.config.Retransmission.BackoffMultiplier, float64(pkt.retryCount)))
+
+					pkt.currentBackoff = min(newBackoff, p.config.Retransmission.MaxBackoff)
+				},
+			)
 
 			return true
 		},
 	)
-
 }

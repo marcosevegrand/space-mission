@@ -14,198 +14,222 @@ import (
 
 // processFragment is the entry point for handling a raw UDP datagram. It parses
 // the data into a Fragment, validates it, and routes it to the correct handler.
-func (p *Peer[T]) processFragment(fragment []byte, addr *net.UDPAddr) error {
-	f, err := ParseFragment(fragment)
+func (p *Peer[T]) processFragment(fragmentBytes []byte, remote *net.UDPAddr) error {
+	// parse the fragment bytes into a fragment struct
+	fragment, err := ParseFragment(fragmentBytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse fragment: %w", err)
+		return fmt.Errorf("failed to parse fragment from %s: %w", remote, err)
 	}
 
 	// Check if the fragment passes the code detection algorithm
-	if !f.ValidateChecksum() {
-		return fmt.Errorf("checksum mismatch for (seqNum %d, fragmentID %d)", f.seqNum, f.fragmentID)
+	if !fragment.ValidateChecksum() {
+		return fmt.Errorf("checksum mismatch for fragment %d (seqNum %d) from %s",
+			fragment.fragmentID, fragment.seqNum, remote)
 	}
 
 	// Split processing for ack and data fragments
-	if f.IsAck() {
-		return p.handleAck(f)
+	if fragment.IsAck() {
+		return p.handleAck(fragment, remote)
 	}
-	if f.IsData() {
-		return p.handleData(f, addr)
+	if fragment.IsData() {
+		return p.handleData(fragment, remote)
 	}
 
 	// Unexpected case where fragment type is unknown
-	return fmt.Errorf("unknown fragment type with flags: %d", f.flags)
+	return fmt.Errorf("unknown fragment type with flags: %d", fragment.flags)
 }
 
 // handleAck processes an acknowledgment fragment, marking a sent fragment as delivered.
 // If the minimum amount of fragments for a message are acknowledged, it considers the message delivered.
-func (p *Peer[T]) handleAck(f *Fragment) error {
-	packet, exists := p.sentPackets.Load(f.seqNum)
+func (p *Peer[T]) handleAck(f *Fragment, remote *net.UDPAddr) error {
+	// Build key necessary to find the packet being acknowledged
+	key := packetKey{
+		addr:      remote.String(),
+		sessionID: p.sessionID,
+		seqNum:    f.seqNum,
+	}
 
+	pktVar, exists := p.sentPackets.Load(key)
 	// Check if the packet being acknowledged exists
 	if !exists {
-		return fmt.Errorf("ACK of unknown packet")
+		// This is common for retransmitted ACKs of
+		// already-completed packets, not an error
+		return nil
 	}
 
-	// Check if the fragment ID is within bounds
-	if int(f.fragmentID) >= len(packet.fragsAck) {
-		return fmt.Errorf("[ERROR] fragment out of bounds (%d/%d)", f.fragmentID, len(packet.fragsAck))
-	}
+	var err error
+	pktVar.Edit(func(packet *sentPacket) {
+		// Check bounds
+		if int(f.fragmentID) >= len(packet.fragsAck) {
+			err = fmt.Errorf("fragment from %s out of bounds (%d/%d)",
+				remote, f.fragmentID, len(packet.fragsAck))
+			return
+		}
 
-	packet.ackMu.Lock()
+		// Check if already fully acked
+		if packet.acked {
+			return // enough acknowledgments received, discard
+		}
 
-	// Check if enough fragments have been acknowledged already
-	if packet.acked {
-		packet.ackMu.Unlock()
-		return nil // enough acknowledgments received, discard
-	}
+		// Check if this specific fragment is duplicate ack
+		if packet.fragsAck[f.fragmentID] {
+			return // duplicate ACK
+		}
 
-	// Check if the fragment has already been acknowledged
-	if packet.fragsAck[f.fragmentID] {
-		packet.ackMu.Unlock()
-		return fmt.Errorf("[WARN] duplicate ACK") // duplicate ACK
-	}
+		// Mark the fragment as acknowledged
+		packet.fragsAck[f.fragmentID] = true
+		packet.acksReceived++
 
-	// Mark the fragment as acknowledged
-	packet.fragsAck[f.fragmentID] = true
-	packet.acksReceived++
+		// Check if enough fragments have been acknowledged for reconstruction
+		if packet.acksReceived == packet.requiredShards {
+			packet.acked = true // retransmission loop will eventually delete this
+			p.lf.Write("[ACKED] seqNum %d from %s confirmed with %d ACKs", f.seqNum, remote, packet.acksReceived)
+		}
+	})
 
-	// Check if enough fragments needed for reconstruction have been acknowledged
-	if packet.acksReceived == packet.requiredShards {
-		packet.acked = true // retransmission loop will be responsible for deleting this packet from map
-		p.lf.Write("[ACKED] seqNum %d confirmed with %d ACKs", f.seqNum, packet.acksReceived)
-	}
-	packet.ackMu.Unlock()
-	return nil
+	return err
 }
 
 // handleData processes a data fragment. It sends an ACK, adds the fragment to the
 // reassembly buffer, and attempts to reconstruct the full message if enough fragments are present.
-func (p *Peer[T]) handleData(f *Fragment, addr *net.UDPAddr) error {
+func (p *Peer[T]) handleData(f *Fragment, remote *net.UDPAddr) error {
 
-	// Check for fragment metadata inconsistency (podemos provavelmente passar este para o decoder no fragment.go)
+	// Check for fragment metadata inconsistency
 	totalShards := int(f.dataShards + f.parityShards)
 	if totalShards == 0 || f.fragmentID >= uint16(totalShards) {
-		return fmt.Errorf("invalid fragment metadata (seq %d, frag %d) from %s", f.seqNum, f.fragmentID, addr)
+		return fmt.Errorf("unexpected totalShards (%d) for fragment %d (seqNum %d) from %s", totalShards, f.fragmentID, f.seqNum, remote)
 	}
 
-	// Acknowledge the received fragment (regardless of whether it's duplicated)
-	if err := p.sendAck(f.seqNum, f.fragmentID, f.dataShards, f.parityShards, addr); err != nil {
-		p.lf.Write("[WARN] Failed to send ACK for seq %d, frag %d: %v", f.seqNum, f.fragmentID, err)
+	// Acknowledge the received fragment
+	if err := p.sendAck(p.sessionID, f.seqNum, f.fragmentID, f.dataShards, f.parityShards, remote); err != nil {
+		p.lf.Write("[WARN] Failed to send ACK for fragment %d (seqNum %d) from %s: %v", f.seqNum, f.fragmentID, remote, err)
 	}
 
-	// Build the key for the received packet map
-	senderAddr := addr.String()
-	recvKey := receivedPacketKey{sender: senderAddr, seqNum: f.seqNum}
+	// Build the key for the received packet
+	recvKey := packetKey{
+		addr:      remote.String(),
+		sessionID: f.sessionID,
+		seqNum:    f.seqNum,
+	}
 
-	// Get the packet from the received packet map or created it if it doesn't exist
-	// This map is a data structure responsible for storing received fragments while they wait for reassembly
-	packet, exists := p.recvPackets.Load(recvKey)
-	if !exists {
-		var enc reedsolomon.Encoder
-		if f.parityShards > 0 {
-			var err error
-			enc, err = reedsolomon.New(int(f.dataShards), int(f.parityShards))
-			if err != nil {
-				return fmt.Errorf("failed to create FEC encoder: %w", err)
+	// Get or create packet struct responsible for
+	// storing fragments while they wait for reassembly
+	pktVar, _ := p.recvPackets.LoadOrCompute(
+		recvKey,
+
+		func() (newPktVar *safe.Var[receivedPacket], cancel bool) {
+			var enc reedsolomon.Encoder
+			if f.parityShards > 0 {
+				// we ignore errors here because invalid parameters would have been caught by previous checks
+				enc, _ = reedsolomon.New(int(f.dataShards), int(f.parityShards))
 			}
-		}
-		packet = &receivedPacket{
-			seqNum:       f.seqNum,
-			dataShards:   int(f.dataShards),
-			parityShards: int(f.parityShards),
-			fecEncoder:   enc,
-
-			shards:        make([][]byte, totalShards),
-			fragsRecv:     make([]bool, totalShards),
-			numFragsRecv:  0,
-			lastUpdated:   time.Now(),
-			reconstructed: false,
-		}
-		p.recvPackets.Store(recvKey, packet)
-	}
-
-	packet.mu.Lock()
-	// Check if packet was already reconstructed
-	if packet.reconstructed {
-		packet.mu.Unlock()
-		return nil // packet already reconstructed, discard fragment
-	}
-
-	// Check if fragment is a duplicate
-	if packet.fragsRecv[f.fragmentID] {
-		return nil // duplicate fragment, discard
-	}
-
-	// Add shard to shard slice for reconstruction
-	packet.shards[f.fragmentID] = f.payload
-	packet.fragsRecv[f.fragmentID] = true
-	packet.numFragsRecv++
-	packet.lastUpdated = time.Now()
-
-	// Check if enough fragments needed for reconstruction were received
-	if packet.numFragsRecv < packet.dataShards {
-		packet.mu.Unlock()
-		return nil // not enough shards for reconstruction
-	}
-
-	// Check if FEC was used
-	if packet.fecEncoder != nil {
-		// Decode shards
-		err := packet.fecEncoder.Reconstruct(packet.shards)
-		if err != nil {
-			p.lf.Write("[WARN] Reconstruction for seq %d failed despite having enough shards (%d/%d): %v",
-				f.seqNum, packet.numFragsRecv, packet.dataShards, err)
-			packet.mu.Unlock()
-			return nil
-		}
-	}
-
-	// Reconstruct full payload
-	var fullPayload []byte
-	for i := 0; i < packet.dataShards; i++ {
-		shard := packet.shards[i]
-		if shard == nil {
-			packet.mu.Unlock()
-			return fmt.Errorf("reconstruction error: data shard %d is missing for seq %d", i, f.seqNum)
-		}
-		fullPayload = append(fullPayload, shard...)
-	}
-	packet.reconstructed = true // cleanup loop will be responsible for deleting this packet from map
-	p.lf.Write("[RECONSTRUCTED] seqNum %d from %s", f.seqNum, senderAddr)
-	packet.mu.Unlock()
-
-	// Get sender packet queue
-	packetQueue, _ := p.recvQueue.LoadOrCompute(
-		addr.String(),
-		func() (*safe.List[payload], bool) {
-			queue := safe.NewList(CmpSeqNum)
-			return queue, false
+			return safe.NewVar(receivedPacket{
+				dataShards:    int(f.dataShards),
+				parityShards:  int(f.parityShards),
+				fecEncoder:    enc,
+				shards:        make([][]byte, totalShards),
+				fragsRecv:     make([]bool, totalShards),
+				numFragsRecv:  0,
+				lastUpdated:   time.Now(),
+				reconstructed: false,
+			}), false
 		},
 	)
 
-	payload := payload{
-		seqNum: f.seqNum,
-		bytes:  fullPayload,
+	var (
+		reconstructed bool
+		payload       pendingPayload
+		err           error
+	)
+
+	// update packet state (add fragment and perform reconstruction)
+	pktVar.Edit(func(packet *receivedPacket) {
+		// Check if packet is already reconstructed
+		if packet.reconstructed {
+			return // reconstructed, skip processing
+		}
+
+		// Check if fragment has already been received
+		if packet.fragsRecv[f.fragmentID] {
+			return // fragment is a duplicated, skip processing
+		}
+
+		// Store fragment and update related variables
+		packet.shards[f.fragmentID] = f.payload
+		packet.fragsRecv[f.fragmentID] = true
+		packet.numFragsRecv++
+		packet.lastUpdated = time.Now()
+
+		// Check if enough shards for reconstruction were received
+		if packet.numFragsRecv < packet.dataShards {
+			return // not enough shards, skip processing
+		}
+
+		// Attempt reconstruction using FEC encoder (if available)
+		if packet.fecEncoder != nil {
+			if err := packet.fecEncoder.Reconstruct(packet.shards); err != nil {
+				// Warn but don't fail hard, maybe more fragments will come
+				p.lf.Write("[WARN] Reconstruction for packet %d from %s failed (%d/%d): %v",
+					f.seqNum, remote, packet.numFragsRecv, packet.dataShards, err)
+				return
+			}
+		}
+
+		// Assemble payload
+		payload.sessionID = f.sessionID
+		payload.seqNum = f.seqNum
+		for i := 0; i < packet.dataShards; i++ {
+			shard := packet.shards[i]
+			if shard == nil {
+				err = fmt.Errorf("reconstruction error: data shard %d is missing for seq %d", i, f.seqNum)
+				return
+			}
+			payload.bytes = append(payload.bytes, shard...)
+		}
+
+		// Mark packet as reconstructed
+		packet.reconstructed = true
+		reconstructed = true
+	})
+
+	// If an error occurred during reconstruction, return it
+	if err != nil {
+		return err
 	}
 
-	// Add payload to queue
-	packetQueue.AddInOrder(payload)
-	p.lf.Write("[QUEUED] seqNum %d from %s", f.seqNum, senderAddr)
+	// Check if reconstruction happened
+	if reconstructed {
+		p.lf.Write("[RECONSTRUCTED] seqNum %d from %s", f.seqNum, remote)
+	} else {
+		return nil // reconstruction didn't happen, end processing
+	}
+
+	// Get or create the packet queue responsible for storing payloads
+	// while they wait delivery to the handler
+	pktQueue, _ := p.recvQueue.LoadOrCompute(
+		remote.String(),
+
+		func() (newPktQueue *safe.List[pendingPayload], cancel bool) {
+			return safe.NewList[pendingPayload](CmpSeqNum), false
+		},
+	)
+
+	// Add the payload to the queue
+	pktQueue.AddInOrder(payload)
+	p.lf.Write("[QUEUED] seqNum %d from %s", f.seqNum, remote)
 
 	return nil
 }
 
 // sendAck constructs and sends an acknowledgment fragment.
-func (p *Peer[T]) sendAck(seqNum uint32, fragmentID, dataShards, parityShards uint16, addr *net.UDPAddr) error {
-	ackFragment := BuildAckFragment(seqNum, fragmentID, dataShards, parityShards)
+func (p *Peer[T]) sendAck(sessionID, seqNum uint32, fragmentID, dataShards, parityShards uint16, addr *net.UDPAddr) error {
+	ackFragment := BuildAckFragment(sessionID, seqNum, fragmentID, dataShards, parityShards)
 	return p.sendFragment(ackFragment, addr)
 }
 
 // sendFragment wraps the low-level UDP send with a write deadline.
 func (p *Peer[T]) sendFragment(fragmentBytes []byte, addr *net.UDPAddr) error {
-	timeout := p.config.Timeouts.Write
-	p.conn.SetWriteDeadline(time.Now().Add(timeout))
+	p.conn.SetWriteDeadline(time.Now().Add(p.config.Timeouts.Write))
 	_, err := p.conn.WriteToUDP(fragmentBytes, addr)
 	return err
 }

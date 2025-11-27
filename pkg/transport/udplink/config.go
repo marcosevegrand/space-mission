@@ -19,7 +19,7 @@ type FECConfig struct {
 
 // RetransmissionConfig holds parameters for the retransmission mechanism.
 type RetransmissionConfig struct {
-	MaxRetries        int           // The maximum number of times a fragment will be retransmitted before failing (0 = infinite, tho not recommended as it causes memory leaks)
+	MaxRetries        int           // The maximum number of times a fragment will be retransmitted before failing (0 = infinite, tho not recommended as it may cause memory leaks)
 	InitialBackoff    time.Duration // Initial backoff duration (e.g., 1s)
 	MaxBackoff        time.Duration // Maximum backoff duration (e.g., 60s)
 	BackoffMultiplier float64       // Multiplier for exponential backoff (e.g., 2.0)
@@ -35,10 +35,11 @@ type TimeoutConfig struct {
 
 // Config is the master configuration for a Peer.
 type Config struct {
-	Timeouts       TimeoutConfig
-	Retransmission RetransmissionConfig
-	FEC            FECConfig
-	MaxWorkers     int
+	Timeouts           TimeoutConfig
+	Retransmission     RetransmissionConfig
+	FEC                FECConfig
+	MaxRecvWorkers     int // For processing incoming fragments
+	MaxDeliveryWorkers int // For delivering packets to the application
 }
 
 // --- Default Configurations ---
@@ -68,10 +69,11 @@ var (
 
 	// DefaultConfig is the standard, recommended configuration with all features enabled.
 	DefaultConfig = Config{
-		Timeouts:       DefaultTimeoutConfig,
-		Retransmission: DefaultRetransmissionConfig,
-		FEC:            DefaultFECConfig,
-		MaxWorkers:     10000,
+		Timeouts:           DefaultTimeoutConfig,
+		Retransmission:     DefaultRetransmissionConfig,
+		FEC:                DefaultFECConfig,
+		MaxRecvWorkers:     10000,
+		MaxDeliveryWorkers: 100,
 	}
 
 	// NoFECConfig provides a configuration with FEC disabled, relying only on retransmissions.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"space-mission/pkg/utils/safe"
 	"time"
 
 	"github.com/klauspost/reedsolomon"
@@ -11,23 +12,27 @@ import (
 
 // Send encodes data, dynamically calculates shards based on message size and FEC ratio,
 // fragments the data, and sends it.
-func (p *Peer[T]) Send(data T, addrStr string) error {
+func (p *Peer[T]) Send(data T, addr string) error {
+	// Check if the peer is running
 	if !p.running.Get() {
 		return fmt.Errorf("peer is not running")
 	}
 
-	destAddr, err := net.ResolveUDPAddr("udp", addrStr)
+	// Resolve UDP address for the destination
+	remote, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to resolve address %s: %w", addrStr, err)
+		return fmt.Errorf("failed to resolve address %s: %w", addr, err)
 	}
 
-	p.lf.Write("[SEND] to %s\n%v", destAddr, data)
+	p.lf.Write("[SEND] to %s\n%v", addr, data)
 
+	// Serialize the data to bytes
 	payload, err := p.encoder(data)
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
 
+	// Sanity check, ensure payload is not empty
 	if len(payload) == 0 {
 		return fmt.Errorf("payload size must be greater than 0")
 	}
@@ -35,6 +40,9 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 	var shards [][]byte
 	var dataShards, parityShards int
 
+	// Fragment the payload into shards
+	// Use Reed-Solomon encoding if parity shard ratio > 0
+	// Otherwise, use simple fragmentation.
 	if p.config.FEC.ParityShardRatio > 0 {
 		// Delegate all complex calculation logic to the manualSplit method.
 		shards, dataShards, parityShards, err = p.manualSplit(payload)
@@ -56,20 +64,28 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 		parityShards = 0
 		shards, _ = createShards(payload, shardSize, dataShards, parityShards)
 	}
+	totalShards := dataShards + parityShards
 
-	var seqNum uint32
-	p.nextSeqNum.Edit(
-		func(val *uint32) {
-			seqNum = *val
-			*val++
+	// Get next sequence number container
+	seqNumVar, _ := p.localNextSeqNums.LoadOrCompute(
+		addr,
+
+		func() (newSeqNumVar *safe.Var[uint32], cancel bool) {
+			return safe.NewVar[uint32](1), false
 		},
 	)
 
-	totalShards := dataShards + parityShards
+	// Atomically capture and increment the sequence number
+	var seqNum uint32
+	seqNumVar.Edit(func(val *uint32) {
+		seqNum = *val
+		*val++
+	})
 
-	pkt := &sentPacket{
-		seqNum:         seqNum,
-		dest:           destAddr,
+	// Create packet struct responsible for storing packet fragments
+	// while they wait their acknowledgments or go through retransmission
+	packet := safe.NewVar(sentPacket{
+		dest:           remote,
 		fragments:      make([][]byte, totalShards),
 		requiredShards: dataShards,
 
@@ -79,22 +95,43 @@ func (p *Peer[T]) Send(data T, addrStr string) error {
 		lastTransmission: time.Time{},
 		currentBackoff:   p.config.Retransmission.InitialBackoff,
 		retryCount:       0,
-	}
+	})
 
-	p.sentPackets.Store(seqNum, pkt)
+	// Create and add fragments to their packet
+	packet.Edit(
+		func(pkt *sentPacket) {
+			for i, shard := range shards {
+				isFEC := i >= dataShards
+				pkt.fragments[i] = BuildDataFragment(
+					p.sessionID, seqNum, uint16(i), uint16(dataShards), uint16(parityShards), isFEC, shard,
+				)
+			}
+		},
+	)
 
-	for i, shard := range shards {
-		isFEC := i >= dataShards
-		fragmentBytes := BuildDataFragment(seqNum, uint16(i), uint16(dataShards), uint16(parityShards), isFEC, shard)
-		pkt.fragments[i] = fragmentBytes
-		if err := p.sendFragment(fragmentBytes, destAddr); err != nil {
-			p.lf.Write("[WARN] Initial send failed for seq %d, frag %d: %v", seqNum, i, err)
-		}
-	}
+	// Add packet to sentPackets map (for ack and retransmission tracking)
+	p.sentPackets.Store(
+		packetKey{
+			addr,
+			p.sessionID,
+			seqNum,
+		},
+		packet,
+	)
 
-	pkt.txMu.Lock()
-	pkt.lastTransmission = time.Now()
-	pkt.txMu.Unlock()
+	// Send packet fragments
+	packet.View(
+		func(pkt *sentPacket) {
+			for _, frag := range pkt.fragments {
+				p.sendFragment(frag, remote)
+			}
+		},
+	)
+	packet.Edit(
+		func(pkt *sentPacket) {
+			pkt.lastTransmission = time.Now()
+		},
+	)
 
 	return nil
 }

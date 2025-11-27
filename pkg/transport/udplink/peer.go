@@ -5,6 +5,7 @@ package udplink
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -20,28 +21,37 @@ import (
 // Peer manages all aspects of reliable UDP communication, including connection state,
 // packet processing loops, and configuration.
 type Peer[T any] struct {
-	// Core components (never overwritten)
-	addr    string
-	conn    *net.UDPConn
-	lf      *logfile.File
-	config  Config
-	encoder interfaces.Encoder[T]
-	decoder interfaces.Decoder[T]
-	handler interfaces.Handler[T]
+	// --- Core components (Never overwritten) ---
+	// Set once during initialization and never changed after, so this is thread-safe.
+	addr      string
+	sessionID uint32
+	conn      *net.UDPConn
+	lf        *logfile.File
+	config    Config
+	encoder   interfaces.Encoder[T]
+	decoder   interfaces.Decoder[T]
+	handler   interfaces.Handler[T]
 
-	// Packet and state management
-	nextSeqNum     *safe.Var[uint32]
-	sentPackets    *xsync.Map[uint32, *sentPacket]
-	recvPackets    *xsync.Map[receivedPacketKey, *receivedPacket]
-	recvQueue      *xsync.Map[string, *safe.List[payload]]
-	expectedSeqNum map[string]uint32    // <-| not subject to concurrency
-	missingSince   map[string]time.Time // <-/
+	// --- Shared/Concurrent State (Requires Concurrent Maps) ---
+	// Accessed by multiple goroutines (Send, Retransmit, Receive, Cleanup)
+	sentPackets      *xsync.Map[packetKey, *safe.Var[sentPacket]]     // Outgoing packets
+	localNextSeqNums *xsync.Map[string, *safe.Var[uint32]]            // Outgoing sequence counters
+	recvPackets      *xsync.Map[packetKey, *safe.Var[receivedPacket]] // Incoming packet reconstruction
+	recvQueue        *xsync.Map[string, *safe.List[pendingPayload]]   // Incoming payload buffer
 
-	// Goroutine lifecycle management
-	workers  *pool.WorkerPool
-	running  *safe.Var[bool]
-	stopChan chan struct{}
-	wg       sync.WaitGroup
+	// --- Delivery State (Standard Maps) ---
+	// Accessed ONLY by the specific worker assigned to the sender in delivery.go.
+	// Delivery waits for all workers to process their assigned queue before next tick, so this is thread-safe.
+	remoteSessionIDs  map[string]uint32    // Tracks the active session ID for each sender
+	remoteNextSeqNums map[string]uint32    // Tracks the expected sequence number for each sender
+	gapSince          map[string]time.Time // Tracks gap timers for in-order delivery
+
+	// --- Goroutine lifecycle management ---
+	recvWorkers     *pool.WorkerPool
+	deliveryWorkers *pool.WorkerPool
+	running         *safe.Var[bool]
+	stopChan        chan struct{}
+	wg              sync.WaitGroup
 }
 
 // NewPeer constructs a new Peer. It accepts a pointer to a Config struct.
@@ -56,7 +66,7 @@ func NewPeer[T any](
 	}
 
 	// Validate timeout configuration
-	if config.Timeouts.Read <= 0 || config.Timeouts.Write <= 0 || config.Timeouts.RecvTTL <= 0 {
+	if config.Timeouts.Read <= 0 || config.Timeouts.Write <= 0 || config.Timeouts.RecvTTL <= 0 || config.Timeouts.InOrder <= 0 {
 		return nil, fmt.Errorf("all timeouts must be positive")
 	}
 	// Validate retransmission configuration
@@ -73,33 +83,44 @@ func NewPeer[T any](
 		return nil, fmt.Errorf("backoff multiplier must be greater than 1.0")
 	}
 	// Validate FEC configuration
+	if config.FEC.MTU <= HeaderSize+1 {
+		return nil, fmt.Errorf("Fragment size must be greater than header size + 1 (%d)", HeaderSize+1)
+	}
 	if config.FEC.ParityShardRatio < 0 {
 		return nil, fmt.Errorf("FEC ratio must be positive")
 	}
-	if config.FEC.MTU <= HeaderSize {
-		return nil, fmt.Errorf("Fragment size must be greater than header size (%d)", HeaderSize)
+	// Validate max workers configuration
+	if config.MaxRecvWorkers < 200 {
+		return nil, fmt.Errorf("max receive workers must be greater than or equal to 200")
 	}
-
-	if config.MaxWorkers <= 0 {
-		return nil, fmt.Errorf("max workers must be greater than 0")
+	if config.MaxDeliveryWorkers < 10 {
+		return nil, fmt.Errorf("max delivery workers must be greater than or equal to 10")
 	}
 
 	return &Peer[T]{
-		config:         config,
-		addr:           addr,
-		lf:             lf,
-		encoder:        encoder,
-		decoder:        decoder,
-		handler:        handler,
-		nextSeqNum:     safe.NewVar[uint32](1),
-		sentPackets:    xsync.NewMap[uint32, *sentPacket](),
-		recvPackets:    xsync.NewMap[receivedPacketKey, *receivedPacket](),
-		recvQueue:      xsync.NewMap[string, *safe.List[payload]](),
-		expectedSeqNum: make(map[string]uint32),
-		missingSince:   make(map[string]time.Time),
-		workers:        pool.NewWorkerPool(config.MaxWorkers),
-		running:        safe.NewVar(false),
-		stopChan:       make(chan struct{}),
+		// Core components
+		addr:      addr,
+		sessionID: rand.Uint32(),
+		lf:        lf,
+		config:    config,
+		encoder:   encoder,
+		decoder:   decoder,
+		handler:   handler,
+
+		// Packet and state management
+		sentPackets:       xsync.NewMap[packetKey, *safe.Var[sentPacket]](),
+		localNextSeqNums:  xsync.NewMap[string, *safe.Var[uint32]](),
+		recvPackets:       xsync.NewMap[packetKey, *safe.Var[receivedPacket]](),
+		recvQueue:         xsync.NewMap[string, *safe.List[pendingPayload]](),
+		remoteSessionIDs:  make(map[string]uint32),
+		remoteNextSeqNums: make(map[string]uint32),
+		gapSince:          make(map[string]time.Time),
+
+		// Goroutine lifecycle management
+		recvWorkers:     pool.NewWorkerPool(config.MaxRecvWorkers),
+		deliveryWorkers: pool.NewWorkerPool(config.MaxDeliveryWorkers),
+		running:         safe.NewVar(false),
+		stopChan:        make(chan struct{}),
 	}, nil
 }
 
@@ -150,5 +171,5 @@ func (p *Peer[T]) Stop() error {
 
 	p.lf.Close()
 
-	return p.lf.Close()
+	return nil
 }

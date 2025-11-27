@@ -45,7 +45,7 @@ func main() {
 			Shape: models.ShapeCircle,
 			Coords: models.CoordsCircle{
 				Center: models.Point{X: 10, Y: 10},
-				Radius: 5,
+				Radius: 2,
 			},
 		},
 		Status:          models.MissionUnassigned,

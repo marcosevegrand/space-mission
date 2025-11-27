@@ -1,6 +1,9 @@
 package udplink
 
-import "time"
+import (
+	"space-mission/pkg/utils/safe"
+	"time"
+)
 
 // cleanupLoop periodically cleans up old, incomplete received packets to prevent memory leaks.
 func (p *Peer[T]) cleanupLoop() {
@@ -25,10 +28,9 @@ func (p *Peer[T]) cleanupLoop() {
 // performCleanup removes stale entries from the received packets map.
 func (p *Peer[T]) performCleanup() {
 	now := time.Now()
-	recvTTL := p.config.Timeouts.RecvTTL
 
 	p.recvPackets.Range(
-		func(key receivedPacketKey, packet *receivedPacket) bool {
+		func(key packetKey, pktVar *safe.Var[receivedPacket]) bool {
 
 			// If the peer is stopping, abort the entire loop immediately.
 			select {
@@ -37,16 +39,29 @@ func (p *Peer[T]) performCleanup() {
 			default:
 			}
 
-			packet.mu.Lock()
-			if now.Sub(packet.lastUpdated) > recvTTL {
-				if packet.reconstructed {
-					p.lf.Write("[CLEANUP] Removing reconstructed packet seq %d from %s", key.seqNum, key.sender)
+			var delete bool
+			var reconstructed bool
+
+			// Check if the packet is stale and if has been reconstructed
+			pktVar.View(
+				func(pkt *receivedPacket) {
+					if now.Sub(pkt.lastUpdated) > p.config.Timeouts.RecvTTL {
+						delete = true
+						reconstructed = pkt.reconstructed
+					}
+				},
+			)
+
+			// If the packet is stale, delete it
+			if delete {
+				if reconstructed {
+					p.lf.Write("[CLEANUP] Removing reconstructed packet seq %d from %s", key.seqNum, key.addr)
 				} else {
-					p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.sender)
+					p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.addr)
 				}
 				p.recvPackets.Delete(key)
 			}
-			packet.mu.Unlock()
+
 			return true
 		},
 	)
