@@ -24,6 +24,8 @@ type SensorModule struct {
 	hydrogen            float64
 	oxygen              float64
 	minerals            []string
+	temperature         float64
+	lastCall            time.Time
 }
 
 type ImageMetadata struct {
@@ -41,6 +43,7 @@ func NewSensorModule() *SensorModule {
 		humidity:            50.0,
 		pressure:            1013.25,
 		co2:                 400.0,
+		lastCall:            time.Now(),
 	}
 }
 
@@ -149,6 +152,25 @@ func (s *SensorModule) GetHumidity() float64 {
 
 	s.humidity = newHumidity
 	return s.humidity
+}
+
+func (s *SensorModule) GetTemperature(lastCall time.Time) float64 {
+	// Calculate time difference since last call
+	timeDiff := time.Since(lastCall).Seconds()
+
+	// Simulate temperature changes within a range of ±1.5 degrees Celsius
+	deltaTemperature := (rand.Float64()*2 - 1) * 1.5
+	newTemperature := s.temperature + deltaTemperature*timeDiff
+
+	// Clamp temperature to a reasonable range (e.g., -10 to 45 degrees Celsius)
+	if newTemperature < -10 {
+		newTemperature = -10
+	} else if newTemperature > 45 {
+		newTemperature = 45
+	}
+
+	s.temperature = newTemperature
+	return s.temperature
 }
 
 func (s *SensorModule) GetPressure() float64 {

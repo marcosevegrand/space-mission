@@ -206,11 +206,11 @@ func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Po
 	case models.TaskEnvironmentalMonitoring:
 		humidity := c.sensor.GetHumidity()
 		pressure := c.sensor.GetPressure()
-		internalTemp := int(c.sensor.GetInternalTemperature(0))
+		temperature := int(c.sensor.GetTemperature(time.Now()))
 		co2 := c.sensor.GetCO2Level()
 
 		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] Temperature: %dºC | Humidity: %.1f%% | Pressure: %.0fPa | CO2: %.0fppm",
-			timestamp, currentPosition.X, currentPosition.Y, internalTemp, humidity, pressure*100, co2)
+			timestamp, currentPosition.X, currentPosition.Y, temperature, humidity, pressure*100, co2)
 		return data, false
 
 	case models.TaskImageCapture:
