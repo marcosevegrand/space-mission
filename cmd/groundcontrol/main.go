@@ -1,25 +1,39 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"strings" // <--- Import this
 )
 
 func main() {
-	// The port we want the website to run on
-	port := ":3000"
+	port := flag.String("port", ":3000", "Port to serve the website on")
+	apiURLInput := flag.String("api", "http://localhost:8080", "Mothership API URL")
+	flag.Parse()
 
-	// 1. Create a file server handler
-	// This tells Go to look into the "groundcontrol-ui/dist" folder for files
+	// If the user forgot "http://", add it automatically.
+	finalAPIURL := *apiURLInput
+	if !strings.HasPrefix(finalAPIURL, "http://") && !strings.HasPrefix(finalAPIURL, "https://") {
+		finalAPIURL = "http://" + finalAPIURL
+	}
+
+	// 2. Handle the dynamic config file
+	http.HandleFunc("/config.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		// Use finalAPIURL here
+		fmt.Fprintf(w, "window.ENV = { API_URL: '%s' };", finalAPIURL)
+	})
+
+	// 3. Serve static files
 	fs := http.FileServer(http.Dir("./groundcontrol-ui/dist"))
-
-	// 2. Strip the prefix so accessing "/" serves index.html
 	http.Handle("/", fs)
 
-	log.Printf("Ground Control Website running at http://localhost%s", port)
+	log.Printf("Ground Control running at http://localhost%s", *port)
+	log.Printf("Connected to Mothership at %s", finalAPIURL)
 
-	// 3. Start the server
-	err := http.ListenAndServe(port, nil)
+	err := http.ListenAndServe(*port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

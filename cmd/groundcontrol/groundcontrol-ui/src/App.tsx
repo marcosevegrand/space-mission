@@ -10,7 +10,7 @@ import {
 } from "./types";
 import { Wifi, Filter, Satellite } from "lucide-react";
 
-const API_URL = "http://localhost:8080";
+const API_URL = window.ENV?.API_URL || "http://localhost:8080";
 
 function App() {
   const [rovers, setRovers] = useState<Telemetry[]>([]);
