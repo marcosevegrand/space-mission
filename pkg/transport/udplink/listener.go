@@ -21,7 +21,7 @@ func (p *Peer[T]) receiveLoop() {
 		select {
 		case <-p.stopChan:
 			localWg.Wait()
-			p.lf.Write("[EVENT] Listener loop stopped")
+			p.lf.Write("[EVENT] listener loop stopped")
 			return
 		default:
 		}

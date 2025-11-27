@@ -31,7 +31,7 @@ type missionVars struct {
 	executionID  uint16                           // ID of the mission currently executing (0 is no mission is executing)
 	assignment   models.MissionAssignment         // Current mission assignment
 	path         *safe.List[models.Point]         // Path to the target position
-	startTime    time.Time                        // Start time of the current mission execution
+	deadline     time.Time                        // Deadline of the current mission execution
 	progressRate float64                          // How much the progress increases per point visited
 	updateBuf    *safe.List[models.MissionUpdate] // Buffer for data generated during mission execution
 }
@@ -91,7 +91,7 @@ func NewComputeElement(
 		executionID:  0,
 		assignment:   models.MissionAssignment{},
 		path:         safe.NewList[models.Point](),
-		startTime:    time.Time{},
+		deadline:     time.Time{},
 		progressRate: 0.0,
 		updateBuf:    safe.NewList[models.MissionUpdate](),
 	}
@@ -208,6 +208,7 @@ func (c *ComputeElement) GetTelemetry() (*models.Telemetry, error) {
 
 func (c *ComputeElement) StartMission() error {
 
+	// Check if mission being started is not already in progress, completed or failed
 	var started bool
 	c.mission.View(
 		func(val *missionVars) {
@@ -219,10 +220,12 @@ func (c *ComputeElement) StartMission() error {
 		},
 	)
 
+	// If mission was already started, return an error
 	if started {
 		return fmt.Errorf("no mission assignment")
 	}
 
+	// Update rover state to indicate it is executing a mission
 	c.state.Edit(
 		func(val *stateVars) {
 			val.operationalState = models.StateOnMission
@@ -232,20 +235,26 @@ func (c *ComputeElement) StartMission() error {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
+
+		// Update mission execution ID
 		c.mission.Edit(
 			func(val *missionVars) {
 				val.executionID = val.assignment.MissionID
 			},
 		)
-		defer c.mission.Edit(
-			func(val *missionVars) {
-				val.executionID = 0
-			},
-		)
+
+		// Initiate mission execution loop
 		err := c.executeMissionLoop()
 		if err != nil {
 			log.Printf("Error executing mission loop: %v", err)
 		}
+
+		// Execution ended, update mission execution ID to none (0) and state to idle
+		c.mission.Edit(
+			func(val *missionVars) {
+				val.executionID = 0
+			},
+		)
 		c.state.Edit(
 			func(val *stateVars) {
 				val.operationalState = models.StateIdle
@@ -266,10 +275,7 @@ func (c *ComputeElement) executeMissionLoop() error {
 		case <-c.stopChan:
 			return nil
 		case <-tick.C:
-			endMission, err := c.executeMission()
-			if err != nil {
-				return err
-			}
+			endMission := c.executeMission()
 			if endMission {
 				return nil
 			}
@@ -291,6 +297,7 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 
 	opState := c.state.Get().operationalState
 
+	// Rover health is critical, should not request new missions
 	c.state.View(
 		func(val *stateVars) {
 			if val.systemHealth.Motors == models.HealthCritical ||
@@ -301,6 +308,8 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 		},
 	)
 
+	// If rover health is not critical, check if rover is idle
+	// If rover is idle, request a new mission
 	if !skip && opState == models.StateIdle {
 		return models.MissionRequest{
 			RoverID:   c.roverID,
@@ -313,20 +322,6 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 }
 
 func (c *ComputeElement) GetMissionUpdates() (updates *safe.List[models.MissionUpdate], stop bool) {
-
-	c.mission.View(
-		func(val *missionVars) {
-			status := val.assignment.Status
-			if val.updateBuf.IsEmpty() &&
-				(status == models.MissionCompleted || status == models.MissionFailed) {
-				stop = true
-			}
-		},
-	)
-
-	if stop {
-		return updates, stop
-	}
 
 	updates = safe.NewList[models.MissionUpdate]()
 
@@ -341,13 +336,27 @@ func (c *ComputeElement) GetMissionUpdates() (updates *safe.List[models.MissionU
 				updates.PushBack(update)
 			}
 
-			if updates.Size() == 0 {
+			// Check if there are any updates
+			if updates.Size() != 0 {
+				return
+			}
+
+			// Check if mission is completed or failed
+			// If mission is completed or failed, stop processing updates
+			if val.assignment.Status == models.MissionCompleted || val.assignment.Status == models.MissionFailed {
+				stop = true
+				return
+			}
+
+			// If mission is not completed or failed but there are no updates
+			// Send "empty" update to meet update frequency requirement
+			if !stop {
 				update := models.MissionUpdate{
 					RoverID:   c.roverID,
 					MissionID: val.assignment.MissionID,
 					Status:    val.assignment.Status,
 					Progress:  val.assignment.Progress,
-					Data:      "[NO NEW AVAILABLE DATA]",
+					Data:      "",
 					Timestamp: time.Now(),
 				}
 				updates.PushBack(update)

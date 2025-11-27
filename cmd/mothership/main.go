@@ -12,14 +12,14 @@ import (
 )
 
 const (
-	staleMission = 3
+	staleMission = 5
 	staleRover   = 5 * time.Second
 )
 
 func main() {
 	// Define flags with default values
-	mothershipTSAddress := flag.String("ts-addr", "10.0.0.20:8000", "Address of the Mothership Telemetry Stream")
-	mothershipMLAddress := flag.String("ml-addr", "10.0.0.20:9000", "Address of the Mothership Mission Link")
+	mothershipTSAddress := flag.String("ts-addr", "localhost:8000", "Address of the Mothership Telemetry Stream")
+	mothershipMLAddress := flag.String("ml-addr", "localhost:9000", "Address of the Mothership Mission Link")
 
 	// Parse the flags
 	flag.Parse()
@@ -39,6 +39,7 @@ func main() {
 	// Mission 1
 	m.AddMissionAssignment(&models.MissionAssignment{
 		MissionID: 1,
+		RoverID:   0,
 		Task:      models.TaskSampleAnalysis,
 		Area: models.GeographicArea{
 			Shape: models.ShapeCircle,

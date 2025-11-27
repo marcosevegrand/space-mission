@@ -1,53 +1,80 @@
-import { useState, useEffect } from "react"; // Removed useMemo
+import { useState, useEffect, useCallback, useRef } from "react";
 import GridMap from "./components/GridMap";
 import { RoverCard, MissionCard } from "./components/Cards";
+import MissionControl from "./components/MissionControl";
 import {
   Telemetry,
   MissionAssignment,
   ApiResponse,
   OperationalState,
   MissionStatus,
+  FleetStatus,
 } from "./types";
-import { Wifi, Filter, Satellite } from "lucide-react";
+import { Wifi, Filter, Satellite, CheckCircle2, XCircle } from "lucide-react";
 
 const API_URL = window.ENV?.API_URL || "http://localhost:8080";
 
 function App() {
   const [rovers, setRovers] = useState<Telemetry[]>([]);
   const [missions, setMissions] = useState<MissionAssignment[]>([]);
+  const [fleetAvailability, setFleetAvailability] = useState<
+    Map<number, boolean>
+  >(new Map());
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // Filters
   const [roverFilter, setRoverFilter] = useState<string>("ALL");
   const [missionFilter, setMissionFilter] = useState<string>("ALL");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [roverRes, missionRes] = await Promise.all([
-          fetch(`${API_URL}/api/rovers`),
-          fetch(`${API_URL}/api/missions`),
-        ]);
+  // Ref to prevent stacking requests if the network is slower than 100ms
+  const isFetching = useRef(false);
 
-        const roverJson: ApiResponse<Telemetry[]> = await roverRes.json();
-        const missionJson: ApiResponse<MissionAssignment[]> =
-          await missionRes.json();
+  const fetchData = useCallback(async () => {
+    if (isFetching.current) return;
+    isFetching.current = true;
 
-        if (roverJson.success) setRovers(roverJson.data || []);
-        if (missionJson.success) setMissions(missionJson.data || []);
+    try {
+      const [roverRes, missionRes, fleetRes] = await Promise.all([
+        fetch(`${API_URL}/api/rovers`),
+        fetch(`${API_URL}/api/missions`),
+        fetch(`${API_URL}/api/fleet-status`),
+      ]);
 
-        setLastUpdate(new Date());
-      } catch (err) {
-        console.error("Connection lost", err);
+      const roverJson: ApiResponse<Telemetry[]> = await roverRes.json();
+      const missionJson: ApiResponse<MissionAssignment[]> =
+        await missionRes.json();
+      const fleetJson: ApiResponse<FleetStatus[]> = await fleetRes.json();
+
+      if (roverJson.success) setRovers(roverJson.data || []);
+      if (missionJson.success) setMissions(missionJson.data || []);
+
+      if (fleetJson.success) {
+        const map = new Map<number, boolean>();
+        fleetJson.data.forEach((item) => {
+          map.set(item.rover_id, item.is_available);
+        });
+        setFleetAvailability(map);
       }
-    };
 
-    fetchData();
-    const interval = setInterval(fetchData, 500);
-    return () => clearInterval(interval);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error("Connection lost", err);
+    } finally {
+      isFetching.current = false;
+    }
   }, []);
 
-  // Note: roverAssignments map is no longer needed since Telemetry has MissionID directly
+  useEffect(() => {
+    // Initial fetch on mount (next tick to satisfy linter)
+    const initial = setTimeout(() => fetchData(), 0);
+
+    // High frequency polling (100ms)
+    const interval = setInterval(fetchData, 100);
+
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, [fetchData]);
 
   // --- Filter & Sort Logic ---
   const filteredRovers = rovers
@@ -63,6 +90,14 @@ function App() {
       return m.Status.toString() === missionFilter;
     })
     .sort((a, b) => a.MissionID - b.MissionID);
+
+  const availableRoversCount = Array.from(fleetAvailability.values()).filter(
+    (v) => v,
+  ).length;
+  const maxMissionId = missions.reduce(
+    (max, m) => Math.max(max, m.MissionID),
+    0,
+  );
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col">
@@ -87,48 +122,92 @@ function App() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
-        {/* LEFT PANEL: ROVERS */}
+        {/* --- LEFT PANEL: ROVERS --- */}
         <aside className="col-span-3 border-r border-slate-800 flex flex-col bg-slate-900/50 h-full overflow-hidden">
+          {/* SECTION 1: AVAILABLE FLEET */}
           <div className="shrink-0 p-4 border-b border-slate-800 bg-slate-900">
-            <h2 className="font-bold text-slate-300 flex items-center gap-2 mb-3">
-              ROVER FLEET{" "}
+            <h2 className="font-bold text-slate-300 flex items-center justify-between gap-2 mb-3">
+              <span>AVAILABLE FLEET</span>
               <span className="text-xs bg-slate-700 px-2 py-0.5 rounded-full text-white">
-                {filteredRovers.length}
+                {availableRoversCount} / {rovers.length}
               </span>
             </h2>
-            <div className="flex items-center gap-2 bg-slate-800 p-2 rounded border border-slate-700">
-              <Filter size={14} className="text-slate-400" />
-              <select
-                className="bg-transparent text-xs w-full outline-none text-slate-200 cursor-pointer"
-                value={roverFilter}
-                onChange={(e) => setRoverFilter(e.target.value)}
-              >
-                <option value="ALL">All States</option>
-                <option value={OperationalState.Idle}>Idle</option>
-                <option value={OperationalState.On_Mission}>On Mission</option>
-                <option value={OperationalState.Error}>Error</option>
-                <option value={OperationalState.Unknown}>Unknown</option>
-              </select>
+            <div className="grid grid-cols-4 gap-2">
+              {rovers
+                .sort((a, b) => a.RoverID - b.RoverID)
+                .map((r) => {
+                  const isAvailable = fleetAvailability.get(r.RoverID) ?? false;
+                  return (
+                    <div
+                      key={r.RoverID}
+                      className={`flex flex-col items-center justify-center p-2 rounded border transition-colors ${
+                        isAvailable
+                          ? "bg-green-900/20 border-green-900/50"
+                          : "bg-red-900/10 border-red-900/30 opacity-60"
+                      }`}
+                      title={isAvailable ? "Available" : "Busy/Assigned"}
+                    >
+                      <div className="mb-1">
+                        {isAvailable ? (
+                          <CheckCircle2 size={16} className="text-green-500" />
+                        ) : (
+                          <XCircle size={16} className="text-red-500" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-xs font-bold font-mono ${isAvailable ? "text-green-100" : "text-slate-500"}`}
+                      >
+                        R{r.RoverID}
+                      </span>
+                    </div>
+                  );
+                })}
+              {rovers.length === 0 && (
+                <span className="text-xs text-slate-500 col-span-4 text-center">
+                  No Fleet Data
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {filteredRovers.length === 0 && (
-              <div className="text-center text-slate-500 text-sm mt-10">
-                No signals detected.
+          {/* SECTION 2: ROVER FLEET LIST */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="shrink-0 p-4 border-b border-slate-800 bg-slate-900">
+              <h2 className="font-bold text-slate-300 flex items-center gap-2 mb-2">
+                ROVER STATUS
+              </h2>
+              <div className="flex items-center gap-2 bg-slate-800 p-2 rounded border border-slate-700">
+                <Filter size={14} className="text-slate-400" />
+                <select
+                  className="bg-transparent text-xs w-full outline-none text-slate-200 cursor-pointer"
+                  value={roverFilter}
+                  onChange={(e) => setRoverFilter(e.target.value)}
+                >
+                  <option value="ALL">All States</option>
+                  <option value={OperationalState.Idle}>Idle</option>
+                  <option value={OperationalState.On_Mission}>
+                    On Mission
+                  </option>
+                  <option value={OperationalState.Error}>Error</option>
+                  <option value={OperationalState.Unknown}>Unknown</option>
+                </select>
               </div>
-            )}
-            {filteredRovers.map((r) => (
-              <RoverCard
-                key={r.RoverID}
-                rover={r}
-                // UPDATED: No prop needed here anymore
-              />
-            ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredRovers.length === 0 && (
+                <div className="text-center text-slate-500 text-sm mt-10">
+                  No signals detected.
+                </div>
+              )}
+              {filteredRovers.map((r) => (
+                <RoverCard key={r.RoverID} rover={r} />
+              ))}
+            </div>
           </div>
         </aside>
 
-        {/* CENTER PANEL: MAP */}
+        {/* --- CENTER PANEL: MAP --- */}
         <section className="col-span-6 bg-slate-950 relative border-r border-slate-800 flex flex-col h-full overflow-hidden">
           <div className="absolute top-4 left-4 z-10 bg-slate-900/90 backdrop-blur px-3 py-2 rounded border border-slate-700 text-xs font-mono text-blue-300 pointer-events-none shadow-xl">
             <div>GRID SYSTEM: 1x1 METER</div>
@@ -139,41 +218,51 @@ function App() {
           </div>
         </section>
 
-        {/* RIGHT PANEL: MISSIONS */}
+        {/* --- RIGHT PANEL: MISSIONS --- */}
         <aside className="col-span-3 flex flex-col bg-slate-900/50 h-full overflow-hidden">
-          <div className="shrink-0 p-4 border-b border-slate-800 bg-slate-900">
-            <h2 className="font-bold text-slate-300 flex items-center gap-2 mb-3">
-              MISSION LOG{" "}
-              <span className="text-xs bg-slate-700 px-2 py-0.5 rounded-full text-white">
-                {filteredMissions.length}
-              </span>
-            </h2>
-            <div className="flex items-center gap-2 bg-slate-800 p-2 rounded border border-slate-700">
-              <Filter size={14} className="text-slate-400" />
-              <select
-                className="bg-transparent text-xs w-full outline-none text-slate-200 cursor-pointer"
-                value={missionFilter}
-                onChange={(e) => setMissionFilter(e.target.value)}
-              >
-                <option value="ALL">All Statuses</option>
-                <option value={MissionStatus.Unassigned}>Unassigned</option>
-                <option value={MissionStatus.Assigned}>Assigned</option>
-                <option value={MissionStatus.In_Progress}>In Progress</option>
-                <option value={MissionStatus.Completed}>Completed</option>
-                <option value={MissionStatus.Failed}>Failed</option>
-              </select>
-            </div>
-          </div>
+          {/* SECTION 1: MISSION CONTROL FORM */}
+          <MissionControl
+            nextId={maxMissionId + 1}
+            onMissionAdded={fetchData}
+          />
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {filteredMissions.length === 0 && (
-              <div className="text-center text-slate-500 text-sm mt-10">
-                No missions logged.
+          {/* SECTION 2: MISSION LOG */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="shrink-0 p-4 border-b border-slate-800 bg-slate-900">
+              <h2 className="font-bold text-slate-300 flex items-center gap-2 mb-2">
+                MISSION LOG{" "}
+                <span className="text-xs bg-slate-700 px-2 py-0.5 rounded-full text-white">
+                  {filteredMissions.length}
+                </span>
+              </h2>
+              <div className="flex items-center gap-2 bg-slate-800 p-2 rounded border border-slate-700">
+                <Filter size={14} className="text-slate-400" />
+                <select
+                  className="bg-transparent text-xs w-full outline-none text-slate-200 cursor-pointer"
+                  value={missionFilter}
+                  onChange={(e) => setMissionFilter(e.target.value)}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value={MissionStatus.Unassigned}>Unassigned</option>
+                  <option value={MissionStatus.Assigned}>Assigned</option>
+                  <option value={MissionStatus.In_Progress}>In Progress</option>
+                  <option value={MissionStatus.Completed}>Completed</option>
+                  <option value={MissionStatus.Failed}>Failed</option>
+                  <option value={MissionStatus.Unknown}>Unknown</option>
+                </select>
               </div>
-            )}
-            {filteredMissions.map((m) => (
-              <MissionCard key={m.MissionID} mission={m} />
-            ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredMissions.length === 0 && (
+                <div className="text-center text-slate-500 text-sm mt-10">
+                  No missions logged.
+                </div>
+              )}
+              {filteredMissions.map((m) => (
+                <MissionCard key={m.MissionID} mission={m} />
+              ))}
+            </div>
           </div>
         </aside>
       </main>

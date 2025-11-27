@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-func (c *ComputeElement) executeMission() (end bool, err error) {
+func (c *ComputeElement) executeMission() (end bool) {
 
 	var assignment models.MissionAssignment
 	var currentPosition models.Point
 	var targetPosition models.Point
 
+	// Get start variables
 	c.mission.View(
 		func(val *missionVars) {
 			assignment = val.assignment
 		},
 	)
-
 	c.spatial.View(
 		func(val *spatialVars) {
 			currentPosition = val.currentPosition
@@ -26,19 +26,22 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 		},
 	)
 
+	// Check if rover health is critical
+	var critical bool
 	c.state.View(
 		func(val *stateVars) {
 			{
 				if val.systemHealth.Motors == models.HealthCritical ||
 					val.systemHealth.Sensors == models.HealthCritical ||
 					val.systemHealth.PowerSystem == models.HealthCritical {
-					end = true
+					critical = true
 				}
 			}
 		},
 	)
 
-	if end {
+	// If rover health is critical, mark mission as failed and send corresponding update
+	if critical {
 		c.mission.Edit(
 			func(val *missionVars) {
 				val.path.Clear()
@@ -54,19 +57,25 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 				val.updateBuf.PushBack(update)
 			},
 		)
-		return end, fmt.Errorf("one or more rover modules failed")
+		return true // end execution
 	}
 
+	// Identify mission status
 	switch assignment.Status {
 	case models.MissionAssigned:
-
+		// Perform basic calculations for mission execution:
+		// - Generate shortest path
+		// - Calculate progress rate
+		// - Set target position
+		// - Update mission status
+		// - Push mission update to buffer
 		c.mission.Edit(
 			func(val *missionVars) {
 				geo.GenerateShortestPath(currentPosition, val.assignment.Area, val.path)
 				val.progressRate = 100.0 / float64(val.path.Size())
 				targetPosition, _ = val.path.PopFront()
 				val.assignment.Status = models.MissionInProgress
-				val.startTime = time.Now()
+				val.deadline = time.Now().Add(val.assignment.MaxDuration)
 				update := models.MissionUpdate{
 					RoverID:   c.roverID,
 					MissionID: val.assignment.MissionID,
@@ -84,15 +93,24 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 			},
 		)
 
-		return false, nil
+		return false
 
 	case models.MissionInProgress:
 
 		// Check if mission has timed out
-		c.mission.Edit(
+		var timeout bool
+		c.mission.View(
 			func(val *missionVars) {
-				deadline := val.startTime.Add(val.assignment.MaxDuration)
-				if time.Now().After(deadline) {
+				if time.Now().After(val.deadline) {
+					timeout = true
+				}
+			},
+		)
+
+		// If mission has timed out, mark mission as failed and send corresponding update
+		if timeout {
+			c.mission.Edit(
+				func(val *missionVars) {
 					val.path.Clear()
 					val.assignment.Status = models.MissionFailed
 					update := models.MissionUpdate{
@@ -104,17 +122,16 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 						Timestamp: time.Now(),
 					}
 					val.updateBuf.PushBack(update)
-					end = true
-				}
-			},
-		)
-		if end {
-			return end, nil // we opt for not treating mission timeout as an error
+				},
+			)
+			return true // end execution
 		}
 
+		// Check if rover has reached target position
 		if geo.EqualPoints(currentPosition, targetPosition) {
-			data, err := c.executeTask(assignment.Task, currentPosition)
-			if err != nil {
+			data, failed := c.executeTask(assignment.Task, currentPosition)
+			// If task execution failed, mark mission as failed and send corresponding update
+			if failed {
 				c.mission.Edit(
 					func(val *missionVars) {
 						val.assignment.Status = models.MissionFailed
@@ -129,15 +146,21 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 						val.updateBuf.PushBack(update)
 					},
 				)
-				return true, fmt.Errorf("failed to execute mission task: %v", err)
+				return true
 			}
+
+			// If task execution succeeded:
+			// - update mission progress
+			// - check for mission completion
+			// - send corresponding update
+			var completed bool
 			c.mission.Edit(
 				func(val *missionVars) {
 					val.assignment.Progress += val.progressRate
-					if val.assignment.Progress >= 99.999 {
+					if val.assignment.Progress >= 100-0.001 { // 0.001 tolerance for float precision
 						val.assignment.Progress = 100
 						val.assignment.Status = models.MissionCompleted
-						end = true
+						completed = true
 					}
 					update := models.MissionUpdate{
 						RoverID:   c.roverID,
@@ -150,9 +173,12 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 					val.updateBuf.PushBack(update)
 				},
 			)
-			if end {
-				return end, nil
+			// If mission is completed, end mission execution
+			if completed {
+				return true
 			}
+
+			// If mission is not completed, continue execution by setting the next target position
 			c.mission.Edit(
 				func(val *missionVars) {
 					targetPosition, _ = val.path.PopFront()
@@ -164,15 +190,16 @@ func (c *ComputeElement) executeMission() (end bool, err error) {
 				},
 			)
 		}
-		return false, nil
+
+		// If mission neither timed out nor reached target position, continue execution
+		return false
 
 	default:
-		return true, fmt.Errorf("unexpected mission status: %v", c.mission.Get().assignment.Status)
+		return true
 	}
 }
 
-func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Point) (string, error) {
-	var data string
+func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Point) (data string, failed bool) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	switch task {
@@ -191,8 +218,8 @@ func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Po
 			timestamp, currentPosition.X, currentPosition.Y,
 			123.4, 15.7, 0.23, 4.5, "loam")
 	default:
-		return "", fmt.Errorf("invalid task type")
+		return "", true
 	}
 
-	return data, nil
+	return data, false
 }

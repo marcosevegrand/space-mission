@@ -81,9 +81,26 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
       y: (height / 2 + pan.y - sy) / currentScale,
     });
 
-    // UPDATED: No longer filtering out Unknown missions.
-    // We display all missions provided by the backend.
-    const visibleMissions = missions;
+    // --- FILTER LOGIC (Updated) ---
+    const now = new Date().getTime();
+
+    const visibleMissions = missions.filter((m) => {
+      // 1. Always show active or pending missions
+      if (
+        m.Status === MissionStatus.Assigned ||
+        m.Status === MissionStatus.In_Progress ||
+        m.Status === MissionStatus.Unassigned
+      ) {
+        return true;
+      }
+
+      // 2. For Completed, Failed, or Unknown: Hide if older than 15s
+      const lastUpdate = new Date(m.last_updated).getTime();
+      const diffSeconds = (now - lastUpdate) / 1000;
+
+      // Keep if updated within the last 15 seconds
+      return diffSeconds < 15;
+    });
 
     // Frame & Grid
     ctx.fillStyle = "#0f172a"; // Slate 900
@@ -160,8 +177,11 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
           ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
           break;
         case MissionStatus.Unknown:
+          ctx.fillStyle = "rgba(156, 163, 175, 0.2)"; // Light Gray
+          ctx.strokeStyle = "rgba(156, 163, 175, 0.6)";
+          break;
         default:
-          ctx.fillStyle = "rgba(100, 116, 139, 0.1)"; // Gray (Unknown)
+          ctx.fillStyle = "rgba(100, 116, 139, 0.1)"; // Fallback Gray
           ctx.strokeStyle = "rgba(100, 116, 139, 0.5)";
           break;
       }

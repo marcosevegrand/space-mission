@@ -22,26 +22,40 @@ import {
   Clock,
   Target,
   Bot,
+  RefreshCw,
 } from "lucide-react";
 
-// --- HELPER: Duration Formatter ---
 const formatDuration = (totalSeconds: number) => {
   const seconds = Math.floor(totalSeconds) / 1_000_000_000;
-
   if (seconds < 60) return `${seconds}s`;
-
   const days = Math.floor(seconds / (3600 * 24));
   const hours = Math.floor((seconds % (3600 * 24)) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
-
   if (days > 0) return `${days}d ${hours}h ${minutes}m ${secs}s`;
   if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
   return `${minutes}m ${secs}s`;
 };
 
-// --- ROVER CARD ---
-// UPDATED: Removed 'assignedMissionId' prop
+const formatTimeAgo = (dateString: string) => {
+  if (!dateString || dateString.startsWith("0001")) return "Never";
+  const date = new Date(dateString);
+  const diffMs = new Date().getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 1) return "Just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  return "> 1h ago";
+};
+
+const getRecencyColor = (dateString: string) => {
+  if (!dateString || dateString.startsWith("0001")) return "text-slate-600";
+  const diffMs = new Date().getTime() - new Date(dateString).getTime();
+  if (diffMs > 30000) return "text-red-500 font-bold";
+  if (diffMs > 5000) return "text-orange-400";
+  return "text-slate-500";
+};
+
 export function RoverCard({ rover }: { rover: Telemetry }) {
   const getStatusColor = (s: OperationalState) => {
     switch (s) {
@@ -65,16 +79,14 @@ export function RoverCard({ rover }: { rover: Telemetry }) {
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-bold text-slate-100">ROVER #{rover.RoverID}</h3>
         <span className="text-xs font-mono uppercase bg-slate-900 px-2 py-1 rounded text-slate-200">
-          {OperationalState[rover.OperationalState]}
+          {OperationalState[rover.OperationalState].replace("_", " ")}
         </span>
       </div>
-
       <div className="mb-2 pb-2 border-b border-slate-700/50 flex items-center justify-between text-xs font-mono">
         <div className="flex items-center gap-1.5 text-slate-400">
           <Target size={12} />
           <span>MISSION:</span>
         </div>
-        {/* UPDATED: Reading directly from Telemetry */}
         {rover.MissionID > 0 ? (
           <span className="text-blue-300 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-900/50">
             #{rover.MissionID}
@@ -83,7 +95,6 @@ export function RoverCard({ rover }: { rover: Telemetry }) {
           <span className="text-slate-600">-</span>
         )}
       </div>
-
       <div className="grid grid-cols-2 gap-2 text-sm text-slate-300">
         <div className="flex items-center gap-2">
           <Battery
@@ -115,11 +126,28 @@ export function RoverCard({ rover }: { rover: Telemetry }) {
           </div>
         </div>
       </div>
-
-      <div className="mt-3 pt-2 border-t border-slate-700 flex gap-2 justify-between">
-        <HealthIcon label="MOTORS" status={rover.SystemHealth.Motors} />
-        <HealthIcon label="SENSORS" status={rover.SystemHealth.Sensors} />
-        <HealthIcon label="POWER" status={rover.SystemHealth.PowerSystem} />
+      <div className="mt-3 pt-2 border-t border-slate-700 flex gap-2 justify-between items-end">
+        <div className="flex gap-2">
+          <HealthIcon label="MOTORS" status={rover.SystemHealth.Motors} />
+          <HealthIcon label="SENSORS" status={rover.SystemHealth.Sensors} />
+          <HealthIcon label="POWER" status={rover.SystemHealth.PowerSystem} />
+        </div>
+        <div
+          className={`flex flex-col items-end justify-end text-[9px] ${getRecencyColor(rover.last_updated)}`}
+        >
+          <div className="flex items-center gap-1">
+            <RefreshCw
+              size={10}
+              className={
+                getRecencyColor(rover.last_updated).includes("text-slate")
+                  ? ""
+                  : "animate-spin"
+              }
+            />
+            <span>UPDATED</span>
+          </div>
+          <span className="font-mono">{formatTimeAgo(rover.last_updated)}</span>
+        </div>
       </div>
     </div>
   );
@@ -134,7 +162,6 @@ function HealthIcon({
 }) {
   let color = "text-slate-500";
   let Icon = HelpCircle;
-
   switch (status) {
     case HealthStatus.OK:
       color = "text-green-500";
@@ -149,7 +176,6 @@ function HealthIcon({
       Icon = XCircle;
       break;
   }
-
   return (
     <div className={`flex flex-col items-center ${color}`}>
       <Icon size={14} />
@@ -158,7 +184,6 @@ function HealthIcon({
   );
 }
 
-// --- MISSION CARD ---
 export function MissionCard({ mission }: { mission: MissionAssignment }) {
   const getProgressColor = (status: MissionStatus) => {
     switch (status) {
@@ -177,12 +202,37 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
     }
   };
 
+  const getMissionStatusColor = (status: MissionStatus) => {
+    switch (status) {
+      case MissionStatus.Unassigned:
+        return "border-slate-200";
+      case MissionStatus.Assigned:
+        return "border-orange-500";
+      case MissionStatus.In_Progress:
+        return "border-blue-500";
+      case MissionStatus.Failed:
+        return "border-red-500";
+      case MissionStatus.Completed:
+        return "border-green-500";
+      default:
+        return "border-slate-500";
+    }
+  };
+
+  const shouldShowStaleWarning =
+    mission.Status === MissionStatus.Assigned ||
+    mission.Status === MissionStatus.In_Progress ||
+    mission.Status === MissionStatus.Unknown;
+
+  const footerColor = shouldShowStaleWarning
+    ? getRecencyColor(mission.last_updated)
+    : "text-slate-500";
+
   const renderAreaInfo = () => {
     if (mission.Area.Shape === Shape.Circle) {
       const c = mission.Area.Coords as CoordsCircle;
       if (!c || !c.Center)
         return <span className="text-red-400">Invalid Coords</span>;
-
       return (
         <div className="grid grid-cols-2 gap-x-2 gap-y-1">
           <span className="text-slate-500">TYPE:</span>
@@ -201,7 +251,6 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
       const r = mission.Area.Coords as CoordsRectangle;
       if (!r || !r.TopLeft || !r.BottomRight)
         return <span className="text-red-400">Invalid Coords</span>;
-
       return (
         <div className="grid grid-cols-2 gap-x-2 gap-y-1">
           <span className="text-slate-500">TYPE:</span>
@@ -223,16 +272,36 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
   };
 
   return (
-    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-3 hover:border-slate-500 transition group">
-      <div className="flex justify-between items-center mb-2">
+    <div
+      className={`bg-slate-800 p-4 rounded-lg border-l-4 mb-3 hover:bg-slate-750 transition group ${getMissionStatusColor(mission.Status)}`}
+    >
+      <div className="flex justify-between items-center mb-3">
         <h3 className="font-bold text-slate-200">
           MISSION #{mission.MissionID}
         </h3>
-        <span className="text-[10px] uppercase text-blue-300 border border-blue-900 bg-blue-900/30 px-2 py-0.5 rounded">
-          {Task[mission.Task]}
+        <span className="text-xs font-mono uppercase bg-slate-900 px-2 py-1 rounded text-slate-200">
+          {MissionStatus[mission.Status].replace("_", " ")}
         </span>
       </div>
-
+      <div className="text-xs text-slate-500 mb-3 font-mono bg-slate-900/30 p-2 rounded flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase bg-slate-700/50 px-1.5 rounded text-slate-400 border border-slate-700 min-w-[45px] text-center">
+            TASK
+          </span>
+          <span className="text-slate-300 font-bold">
+            {Task[mission.Task].replace("_", " ")}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase bg-slate-700/50 px-1.5 rounded text-slate-400 border border-slate-700 min-w-[45px] text-center">
+            LIMIT
+          </span>
+          <span className="flex items-center gap-1 text-slate-400">
+            <Clock size={12} />
+            {formatDuration(mission.MaxDuration)}
+          </span>
+        </div>
+      </div>
       <div className="mb-2 pb-2 border-b border-slate-700/50 flex items-center justify-between text-xs font-mono">
         <div className="flex items-center gap-1.5 text-slate-400">
           <Bot size={12} />
@@ -246,24 +315,12 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
           <span className="text-slate-600">-</span>
         )}
       </div>
-
-      <div className="flex justify-between items-center text-xs text-slate-500 mb-3 font-mono bg-slate-900/30 p-1.5 rounded">
-        <span className="font-bold text-slate-400">
-          {MissionStatus[mission.Status]}
-        </span>
-        <span className="flex items-center gap-1" title="Max Duration">
-          <Clock size={10} />
-          {formatDuration(mission.MaxDuration)} Limit
-        </span>
-      </div>
-
       <div className="mb-3 p-2 bg-slate-900 rounded border border-slate-700/50 text-[10px] font-mono">
         <div className="flex items-center gap-1 text-slate-400 mb-2 border-b border-slate-700 pb-1">
           <MapPin size={10} /> GEOGRAPHIC TARGET
         </div>
         {renderAreaInfo()}
       </div>
-
       <div className="flex items-center gap-2">
         <div className="flex-1 bg-slate-900 rounded-full h-1.5">
           <div
@@ -274,6 +331,12 @@ export function MissionCard({ mission }: { mission: MissionAssignment }) {
         <div className="text-[10px] text-slate-400 font-mono w-8 text-right">
           {mission.Progress.toFixed(0)}%
         </div>
+      </div>
+      <div
+        className={`mt-2 pt-2 flex justify-end items-center gap-1.5 text-[9px] border-t border-slate-700/30 ${footerColor}`}
+      >
+        <span>Last Update:</span>
+        <span className="font-mono">{formatTimeAgo(mission.last_updated)}</span>
       </div>
     </div>
   );

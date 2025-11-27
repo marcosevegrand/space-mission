@@ -7,6 +7,8 @@ import (
 	"space-mission/pkg/utils/geo"
 	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string) error {
@@ -19,7 +21,7 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 			return err
 		}
 
-		err = m.missionLink.Send(assignment, senderAddr)
+		err = m.missionLink.Send(&assignment, senderAddr)
 		if err != nil {
 			return err
 		}
@@ -40,8 +42,8 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 
 func (m *Mothership) AddMissionAssignment(assignment *models.MissionAssignment) error {
 
-	_, ok := m.missionAssignments.Load(assignment.MissionID)
-	if ok {
+	_, loaded := m.missionAssignments.Load(assignment.MissionID)
+	if loaded {
 		return fmt.Errorf("Mission assignment #%d already exists", assignment.MissionID)
 	}
 
@@ -78,42 +80,51 @@ func (m *Mothership) findClosestMission(position models.Point) (uint16, error) {
 	return missionID, nil
 }
 
-func (m *Mothership) assignMission(roverID uint16, position models.Point) (*models.MissionAssignment, error) {
+func (m *Mothership) assignMission(roverID uint16, position models.Point) (models.MissionAssignment, error) {
 
-	// 1. Check if rover already has a mission assigned
-	fmt.Println("Checking if rover already has a mission assigned")
-	hasMission, _ := m.roverHasMission.LoadOrStore(roverID, false)
-	fmt.Println("Rover already has a mission assigned:", hasMission)
-	if hasMission {
-		return nil, fmt.Errorf("Rover already has a mission assigned")
-	} else {
-		m.roverHasMission.Store(roverID, true)
-	}
+	var assignment models.MissionAssignment
+	var err error
 
-	// 2. Check if there are any unassigned missions
-	if m.unassignedMissions.Size() == 0 {
-		return nil, fmt.Errorf("No unassigned missions available")
-	}
+	m.roverHasMission.Compute(
+		roverID,
 
-	// 3. Find the closest mission to the rover's position
-	missionID, err := m.findClosestMission(position)
-	if err != nil {
-		m.roverHasMission.Store(roverID, false)
-		return nil, err
-	}
+		func(hasMission, loaded bool) (newValue bool, op xsync.ComputeOp) {
+			// Check if rover already has a mission assigned
+			if loaded && hasMission {
+				err = fmt.Errorf("Rover already has a mission assigned")
+				return true, xsync.CancelOp
+			}
 
-	container, ok := m.missionAssignments.Load(missionID) // get mission assignment
-	if !ok {
-		return nil, fmt.Errorf("Mission assignment not found")
-	}
-	container.Edit(func(val *models.MissionAssignment) {
-		val.RoverID = roverID
-		val.Status = models.MissionAssigned // mark it as assigned
-	})
+			// Check if there are any unassigned missions
+			if m.unassignedMissions.Size() == 0 {
+				err = fmt.Errorf("No unassigned missions available")
+				return false, xsync.CancelOp
+			}
 
-	snapshot := container.Get()
+			// Find the closest mission to the rover's position
+			missionID, err := m.findClosestMission(position)
+			if err != nil {
+				err = fmt.Errorf("Failed to find closest mission: %w", err)
+				return false, xsync.CancelOp
+			}
 
-	return &snapshot, nil
+			// Get the mission assignment and mark the mission as assigned and to which rover
+			container, ok := m.missionAssignments.Load(missionID)
+			if !ok {
+				err = fmt.Errorf("Mission assignment not found")
+				return false, xsync.CancelOp
+			}
+			container.Edit(func(val *models.MissionAssignment) {
+				val.RoverID = roverID
+				val.Status = models.MissionAssigned
+			})
+			assignment = container.Get()
+
+			return true, xsync.UpdateOp
+		},
+	)
+
+	return assignment, err
 }
 
 func (m *Mothership) updateMission(update *models.MissionUpdate) error {
@@ -121,6 +132,11 @@ func (m *Mothership) updateMission(update *models.MissionUpdate) error {
 	container, ok := m.missionAssignments.Load(update.MissionID)
 	if !ok {
 		return fmt.Errorf("Mission assignment not found")
+	}
+
+	status := container.Get().Status
+	if status == models.MissionCompleted || status == models.MissionFailed {
+		return fmt.Errorf("Completed or failed mission do not expect updates")
 	}
 
 	// Update mission assignment
@@ -138,8 +154,7 @@ func (m *Mothership) updateMission(update *models.MissionUpdate) error {
 		container.Edit(func(val *models.MissionAssignment) {
 			val.RoverID = 0
 		})
-		m.missionLastUpdate.Store(update.MissionID, time.Time{}) // completed/failed missions are not expected to be updated again
-		m.roverHasMission.Store(update.RoverID, false)           // mark rover as free to receive new mission
+		m.roverHasMission.Store(update.RoverID, false) // mark rover as free to receive new mission
 	}
 
 	return nil

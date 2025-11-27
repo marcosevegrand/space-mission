@@ -1,5 +1,3 @@
-// src/types.ts
-
 export interface Point {
   X: number;
   Y: number;
@@ -9,8 +7,6 @@ export interface Velocity {
   X: number;
   Y: number;
 }
-
-// --- ENUMS (Matching Go iota + 1) ---
 
 export enum Shape {
   Circle = 1,
@@ -47,8 +43,6 @@ export enum MissionStatus {
   Unknown = 6,
 }
 
-// --- COMPLEX TYPES ---
-
 export interface SystemHealth {
   Motors: HealthStatus;
   Sensors: HealthStatus;
@@ -67,11 +61,8 @@ export interface CoordsRectangle {
 
 export interface GeographicArea {
   Shape: Shape;
-  // In JSON, this will be one of the concrete structs depending on Shape
   Coords: CoordsCircle | CoordsRectangle;
 }
-
-// --- MAIN ENTITIES ---
 
 export interface Telemetry {
   RoverID: number;
@@ -83,6 +74,7 @@ export interface Telemetry {
   Temperature: number;
   SystemHealth: SystemHealth;
   Timestamp: string;
+  last_updated: string;
 }
 
 export interface MissionAssignment {
@@ -95,6 +87,12 @@ export interface MissionAssignment {
   MaxDuration: number;
   UpdateFrequency: number;
   Timestamp: string;
+  last_updated: string;
+}
+
+export interface FleetStatus {
+  rover_id: number;
+  is_available: boolean;
 }
 
 export interface ApiResponse<T> {

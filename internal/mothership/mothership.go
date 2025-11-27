@@ -25,7 +25,7 @@ type Mothership struct {
 	roverHasMission *xsync.Map[uint16, bool]                        // it stores whether each rover has a mission or not
 
 	// stale configs
-	staleMission int           // multiplier for mission update frequency that sets when to consider one stale (recommended: >5)
+	staleMission int           // number of mission updates missing for a mission to be considered stale
 	staleRover   time.Duration // time interval without telemetry updates to consider one stale
 
 	telemetryStream *tcpstream.Server[*models.Telemetry]

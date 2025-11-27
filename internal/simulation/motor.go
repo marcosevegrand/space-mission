@@ -35,6 +35,10 @@ func (m *MotorModule) GetHealth(deltaT time.Duration) models.HealthStatus {
 
 	randomValue := rand.Float64() * 100.0
 
+	if m.velocity.X == 0 && m.velocity.Y == 0 {
+		return m.health
+	}
+
 	if randomValue < (probWarning*deltaT.Seconds()) && m.health == models.HealthOK {
 		m.health = models.HealthWarning
 		return m.health

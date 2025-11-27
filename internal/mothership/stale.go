@@ -52,7 +52,6 @@ func (m *Mothership) checkStaleRovers() error {
 				telemetry.Edit(
 					func(val *models.Telemetry) {
 						val.OperationalState = models.StateUnknown
-						m.roverLastUpdate.Store(roverID, time.Time{})
 					},
 				)
 			}
@@ -72,7 +71,8 @@ func (m *Mothership) checkStaleMissions() error {
 				return true
 			}
 
-			if mission.Get().Status == models.MissionInProgress &&
+			if !lastUpdate.IsZero() &&
+				((mission.Get().Status == models.MissionAssigned) || (mission.Get().Status == models.MissionInProgress)) &&
 				time.Since(lastUpdate) > time.Duration(m.staleMission)*mission.Get().UpdateFrequency {
 				mission, ok := m.missionAssignments.Load(missionID)
 				if !ok {
@@ -82,7 +82,6 @@ func (m *Mothership) checkStaleMissions() error {
 				mission.Edit(
 					func(val *models.MissionAssignment) {
 						val.Status = models.MissionUnknown
-						m.missionLastUpdate.Delete(missionID)
 						m.roverHasMission.Store(val.RoverID, false)
 					},
 				)
