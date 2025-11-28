@@ -47,33 +47,32 @@ func (p *Peer[T]) performDelivery() {
 }
 
 func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayload]) {
-	// 1. Get Expected Sequence Number
-	expected, ok := p.remoteNextSeqNums[senderAddr]
+	// 1. Get Expected Sequence Number (Thread-Safe)
+	expected, ok := p.remoteNextSeqNums.Load(senderAddr)
 	if !ok {
 		expected = 0
 	}
 
-	// --- FIX: CHECK TIMERS BEFORE CHECKING QUEUE SIZE ---
-	if gapStart, isWaiting := p.gapSince[senderAddr]; isWaiting {
+	// --- GAP TIMER CHECK ---
+	if gapStart, isWaiting := p.gapSince.Load(senderAddr); isWaiting {
 		if time.Since(gapStart) > p.config.Timeouts.InOrder {
 			p.lf.Write("[WARN] Gap timeout for %s (Expected %d). Resolving...", senderAddr, expected)
 
-			// Scenario A: Queue is empty. We missed the packet, time is up.
-			// Skip the missing packet sequence to unblock the system.
+			// Scenario A: Queue empty. Skip missing packet.
 			if queue.Size() == 0 {
 				p.lf.Write("[WARN] Queue empty after timeout. Skipping missing seq %d -> %d", expected, expected+1)
-				p.remoteNextSeqNums[senderAddr] = expected + 1
-				delete(p.gapSince, senderAddr)
+				p.remoteNextSeqNums.Store(senderAddr, expected+1)
+				p.gapSince.Delete(senderAddr)
 				return
 			}
 
-			// Scenario B: Queue has items. Force jump to head.
+			// Scenario B: Queue has items. Jump to head.
 			headPayload, _ := queue.Front()
 			p.lf.Write("[WARN] Jumping expectation from %d to %d", expected, headPayload.seqNum)
-			p.remoteNextSeqNums[senderAddr] = headPayload.seqNum
-			delete(p.gapSince, senderAddr)
+			p.remoteNextSeqNums.Store(senderAddr, headPayload.seqNum)
+			p.gapSince.Delete(senderAddr)
 
-			// Fall through to process the head packet immediately
+			// Fall through to process head packet
 		}
 	}
 
@@ -88,7 +87,7 @@ func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayloa
 		}
 
 		// --- SESSION CHANGE DETECTION ---
-		knownSession, hasSession := p.remoteSessionIDs[senderAddr]
+		knownSession, hasSession := p.remoteSessionIDs.Load(senderAddr)
 
 		if !hasSession || headPayload.sessionID != knownSession {
 			if hasSession {
@@ -96,10 +95,10 @@ func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayloa
 			} else {
 				p.lf.Write("[INFO] New session with %s (Session: %d)", senderAddr, headPayload.sessionID)
 			}
-			p.remoteSessionIDs[senderAddr] = headPayload.sessionID
-			p.remoteNextSeqNums[senderAddr] = headPayload.seqNum
+			p.remoteSessionIDs.Store(senderAddr, headPayload.sessionID)
+			p.remoteNextSeqNums.Store(senderAddr, headPayload.seqNum)
 			expected = headPayload.seqNum
-			delete(p.gapSince, senderAddr)
+			p.gapSince.Delete(senderAddr)
 		}
 
 		// CASE 1: Duplicate / Late
@@ -112,14 +111,14 @@ func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayloa
 		// CASE 2: Exact Match
 		if headPayload.seqNum == expected {
 			p.processPayload(senderAddr, queue)
-			delete(p.gapSince, senderAddr)
-			expected++ // Update local var for next loop iteration
+			p.gapSince.Delete(senderAddr)
+			expected++ // Local update for next loop iteration
 			continue
 		}
 
 		// CASE 3: Gap Detected
-		if _, isWaiting := p.gapSince[senderAddr]; !isWaiting {
-			p.gapSince[senderAddr] = time.Now()
+		if _, isWaiting := p.gapSince.Load(senderAddr); !isWaiting {
+			p.gapSince.Store(senderAddr, time.Now())
 			return
 		}
 
@@ -134,7 +133,8 @@ func (p *Peer[T]) processPayload(senderAddr string, queue *safe.List[pendingPayl
 		return
 	}
 
-	p.remoteNextSeqNums[senderAddr] = item.seqNum + 1
+	// Update expectation (Thread-Safe)
+	p.remoteNextSeqNums.Store(senderAddr, item.seqNum+1)
 
 	data, err := p.decoder(item.bytes)
 	if err != nil {

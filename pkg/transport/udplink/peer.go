@@ -28,15 +28,13 @@ type Peer[T any] struct {
 	handler   interfaces.Handler[T]
 
 	// --- Shared/Concurrent State ---
-	sentPackets      *xsync.Map[packetKey, *safe.Var[sentPacket]]
-	localNextSeqNums *xsync.Map[string, *safe.Var[uint32]]
-	recvPackets      *xsync.Map[packetKey, *safe.Var[receivedPacket]]
-	recvQueue        *xsync.Map[string, *safe.List[pendingPayload]]
-
-	// --- Delivery State (Thread-safe via serial access in deliveryLoop) ---
-	remoteSessionIDs  map[string]uint32
-	remoteNextSeqNums map[string]uint32
-	gapSince          map[string]time.Time
+	sentPackets       *xsync.Map[packetKey, *safe.Var[sentPacket]]
+	localNextSeqNums  *xsync.Map[string, *safe.Var[uint32]]
+	recvPackets       *xsync.Map[packetKey, *safe.Var[receivedPacket]]
+	recvQueue         *xsync.Map[string, *safe.List[pendingPayload]]
+	remoteSessionIDs  *xsync.Map[string, uint32]
+	remoteNextSeqNums *xsync.Map[string, uint32]
+	gapSince          *xsync.Map[string, time.Time]
 
 	// --- Goroutine lifecycle ---
 	recvWorkers     *pool.WorkerPool
@@ -57,7 +55,6 @@ func NewPeer[T any](
 		return nil, fmt.Errorf("failed to create log file: %w", err)
 	}
 
-	// Validation checks...
 	if config.Timeouts.Read <= 0 {
 		return nil, fmt.Errorf("timeouts must be positive")
 	}
@@ -79,9 +76,10 @@ func NewPeer[T any](
 		recvPackets:      xsync.NewMap[packetKey, *safe.Var[receivedPacket]](),
 		recvQueue:        xsync.NewMap[string, *safe.List[pendingPayload]](),
 
-		remoteSessionIDs:  make(map[string]uint32),
-		remoteNextSeqNums: make(map[string]uint32),
-		gapSince:          make(map[string]time.Time),
+		// Initialize thread-safe maps for delivery state
+		remoteSessionIDs:  xsync.NewMap[string, uint32](),
+		remoteNextSeqNums: xsync.NewMap[string, uint32](),
+		gapSince:          xsync.NewMap[string, time.Time](),
 
 		recvWorkers:     pool.NewWorkerPool(config.MaxRecvWorkers),
 		deliveryWorkers: pool.NewWorkerPool(config.MaxDeliveryWorkers),
@@ -91,17 +89,14 @@ func NewPeer[T any](
 }
 
 // Start initializes the UDP listener.
-// UPDATED: Now binds to wildcard address to support both IPv4 and IPv6/Localhost.
 func (p *Peer[T]) Start() error {
 	if p.running.Get() {
 		return fmt.Errorf("peer already running")
 	}
 
 	// Extract port to bind to all interfaces (0.0.0.0 / [::])
-	// This fixes the issue where "localhost" sends as [::1] but listener is on 127.0.0.1
 	_, port, err := net.SplitHostPort(p.addr)
 	if err != nil {
-		// Fallback if address is just ":9000" or similar
 		port = p.addr
 		if len(p.addr) > 0 && p.addr[0] == ':' {
 			port = p.addr[1:]
@@ -152,13 +147,12 @@ func (p *Peer[T]) Stop() error {
 	return nil
 }
 
-// canonicalizeAddr normalizes addresses to prevent mismatch between "localhost", "::1" and "127.0.0.1".
+// canonicalizeAddr normalizes addresses.
 func canonicalizeAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return addr
 	}
-	// Treat all loopback variations as 127.0.0.1
 	if host == "localhost" || host == "::1" {
 		return "127.0.0.1:" + port
 	}

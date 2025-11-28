@@ -15,7 +15,8 @@ import {
   Filter,
   Satellite,
   Hammer,
-  Moon, // Imported Moon for idle state
+  Moon,
+  HelpCircle, // Added for the interrogation mark
 } from "lucide-react";
 
 const API_URL = window.ENV?.API_URL || "http://localhost:8080";
@@ -140,34 +141,51 @@ function App() {
                 .sort((a, b) => a.RoverID - b.RoverID)
                 .map((r) => {
                   const isAvailable = fleetAvailability.get(r.RoverID) ?? false;
+                  const isErrorOrUnknown =
+                    r.OperationalState === OperationalState.Error ||
+                    r.OperationalState === OperationalState.Unknown;
 
-                  // Logic Definition:
-                  // isAvailable = True -> HasMission is False -> IDLE (Grey, Sleeping)
-                  // isAvailable = False -> HasMission is True -> BUSY (Orange, Hammer)
+                  // --- LOGIC DETERMINATION ---
+                  let containerClass = "";
+                  let iconColor = "";
+                  let textColor = "";
+                  let IconComponent = Moon;
+                  let title = "";
+
+                  if (!isAvailable) {
+                    // 1. HAS MISSION (BUSY)
+                    containerClass = "bg-orange-900/10 border-orange-900/40";
+                    iconColor = "text-orange-400";
+                    textColor = "text-orange-200";
+                    IconComponent = Hammer;
+                    title = "Busy / On Mission";
+                  } else if (isErrorOrUnknown) {
+                    // 2. AVAILABLE but ERROR/UNKNOWN
+                    containerClass = "bg-slate-900 border-slate-800 opacity-60"; // Dark Grey / Dim
+                    iconColor = "text-slate-600";
+                    textColor = "text-slate-600";
+                    IconComponent = HelpCircle;
+                    title = "Offline / Error";
+                  } else {
+                    // 3. AVAILABLE and IDLE
+                    containerClass = "bg-slate-700 border-slate-500"; // Light Gray / White-ish
+                    iconColor = "text-slate-200";
+                    textColor = "text-slate-200";
+                    IconComponent = Moon;
+                    title = "Idle / Sleeping";
+                  }
 
                   return (
                     <div
                       key={r.RoverID}
-                      className={`flex flex-col items-center justify-center p-2 rounded border transition-colors ${
-                        !isAvailable
-                          ? "bg-orange-900/10 border-orange-900/40" // Busy: Light Orange bg
-                          : "bg-slate-800 border-slate-700 opacity-60" // Idle: Grey bg
-                      }`}
-                      title={isAvailable ? "Available" : "Busy"}
+                      className={`flex flex-col items-center justify-center p-2 rounded border transition-colors ${containerClass}`}
+                      title={title}
                     >
                       <div className="mb-1">
-                        {!isAvailable ? (
-                          // HasMission = True (Busy) -> Light Orange, Hammer
-                          <Hammer size={16} className="text-orange-400" />
-                        ) : (
-                          // HasMission = False (Available) -> Grey, Sleeping
-                          <Moon size={16} className="text-slate-500" />
-                        )}
+                        <IconComponent size={16} className={iconColor} />
                       </div>
                       <span
-                        className={`text-xs font-bold font-mono ${
-                          !isAvailable ? "text-orange-200" : "text-slate-500"
-                        }`}
+                        className={`text-xs font-bold font-mono ${textColor}`}
                       >
                         R{r.RoverID}
                       </span>

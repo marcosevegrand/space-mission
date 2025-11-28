@@ -121,6 +121,10 @@ export default function MissionControl({
     }
   };
 
+  // Shared class to hide spinners
+  const numberInputClass =
+    "w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
   return (
     <div className="bg-slate-900 border-b border-slate-800 p-4 shrink-0">
       <h2 className="font-bold text-slate-300 flex items-center gap-2 mb-3">
@@ -136,7 +140,7 @@ export default function MissionControl({
             </label>
             <input
               type="number"
-              className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+              className={numberInputClass}
               value={commonData.id}
               onChange={(e) =>
                 setCommonData({ ...commonData, id: Number(e.target.value) })
@@ -197,7 +201,7 @@ export default function MissionControl({
               </label>
               <input
                 type="number"
-                className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+                className={numberInputClass}
                 value={circleData.x}
                 onChange={(e) =>
                   setCircleData({ ...circleData, x: Number(e.target.value) })
@@ -211,7 +215,7 @@ export default function MissionControl({
               </label>
               <input
                 type="number"
-                className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+                className={numberInputClass}
                 value={circleData.y}
                 onChange={(e) =>
                   setCircleData({ ...circleData, y: Number(e.target.value) })
@@ -225,7 +229,7 @@ export default function MissionControl({
               </label>
               <input
                 type="number"
-                className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+                className={numberInputClass}
                 value={circleData.radius}
                 onChange={(e) =>
                   setCircleData({
@@ -246,7 +250,8 @@ export default function MissionControl({
               <input
                 type="number"
                 placeholder="X"
-                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono"
+                // Using bg-slate-900 here slightly different than the shared variable, so applying spinner classes manually
+                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={rectData.x1}
                 onChange={(e) =>
                   setRectData({ ...rectData, x1: Number(e.target.value) })
@@ -256,7 +261,7 @@ export default function MissionControl({
               <input
                 type="number"
                 placeholder="Y"
-                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono"
+                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={rectData.y1}
                 onChange={(e) =>
                   setRectData({ ...rectData, y1: Number(e.target.value) })
@@ -271,7 +276,7 @@ export default function MissionControl({
               <input
                 type="number"
                 placeholder="X"
-                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono"
+                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={rectData.x2}
                 onChange={(e) =>
                   setRectData({ ...rectData, x2: Number(e.target.value) })
@@ -281,7 +286,7 @@ export default function MissionControl({
               <input
                 type="number"
                 placeholder="Y"
-                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono"
+                className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={rectData.y2}
                 onChange={(e) =>
                   setRectData({ ...rectData, y2: Number(e.target.value) })
@@ -300,7 +305,7 @@ export default function MissionControl({
             </label>
             <input
               type="number"
-              className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+              className={numberInputClass}
               value={commonData.duration}
               onChange={(e) =>
                 setCommonData({
@@ -317,7 +322,7 @@ export default function MissionControl({
             </label>
             <input
               type="number"
-              className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 outline-none font-mono"
+              className={numberInputClass}
               value={commonData.frequency}
               onChange={(e) =>
                 setCommonData({

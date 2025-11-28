@@ -82,6 +82,33 @@ func (m *Mothership) findClosestMission(position models.Point) (uint16, error) {
 
 func (m *Mothership) assignMission(roverID uint16, position models.Point) (models.MissionAssignment, error) {
 
+	// Check if rover state is unknown or error,
+	// we don't want to assign a mission to a rover in those states
+	var ignore bool
+	_, ok := m.roverTelemetry.Compute(
+		roverID,
+		func(telemetryVar *safe.Var[models.Telemetry], loaded bool) (*safe.Var[models.Telemetry], xsync.ComputeOp) {
+			if !loaded {
+				ignore = true
+				return nil, xsync.CancelOp
+			}
+
+			telemetryVar.View(
+				func(telemetry *models.Telemetry) {
+					state := telemetryVar.Get().OperationalState
+					if loaded && state == models.StateError || state == models.StateUnknown {
+						ignore = true
+					}
+				},
+			)
+			return nil, xsync.CancelOp
+		},
+	)
+	if !ok || ignore {
+		// no error to not polute logs, silently ignore requests
+		return models.MissionAssignment{}, nil
+	}
+
 	var assignment models.MissionAssignment
 	var err error
 
