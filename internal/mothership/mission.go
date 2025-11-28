@@ -147,6 +147,9 @@ func (m *Mothership) assignMission(roverID uint16, position models.Point) (model
 			})
 			assignment = container.Get()
 
+			// Mark mission as updated
+			m.missionLastUpdate.Store(missionID, time.Now())
+
 			return true, xsync.UpdateOp
 		},
 	)

@@ -20,15 +20,16 @@ func main() {
 	// Define flags with default values
 	mothershipTSAddress := flag.String("ts-addr", "localhost:8000", "Address of the Mothership Telemetry Stream")
 	mothershipMLAddress := flag.String("ml-addr", "localhost:9000", "Address of the Mothership Mission Link")
+	mothershipAPIAddress := flag.String("api-addr", "localhost:8080", "Address of the Mothership Observation API")
 
 	// Parse the flags
 	flag.Parse()
 
-	log.Printf("Starting Mothership services on TS: %s, ML: %s", *mothershipTSAddress, *mothershipMLAddress)
-
+	// Initialize the Mothership
 	m, err := mothership.NewMothership(
 		*mothershipTSAddress,
 		*mothershipMLAddress,
+		*mothershipAPIAddress,
 		staleMission,
 		staleRover,
 	)
@@ -36,6 +37,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	log.Printf("Mothership services started on:\n"+
+		"     - Telemetry Stream:   %s\n"+
+		"     - Mission Link:       %s\n"+
+		"     - Observation API:    %s\n",
+		*mothershipTSAddress, *mothershipMLAddress, *mothershipAPIAddress)
+
+	// ========================================================================
+	// NEED TO REPLACE THIS BY A CLI FOR LOADING MISSIONS IN JSON OR ADDING THROUGH COMMAND LINE
+	// ========================================================================
 	// Mission 1
 	m.AddMissionAssignment(&models.MissionAssignment{
 		MissionID: 1,
@@ -93,7 +103,7 @@ func main() {
 		Timestamp:       time.Now(),
 	})
 
-	// Mission 4 (Duplicate ID fix not applied here to keep your logic, but noted as Mission 4 in comments)
+	// Mission 4
 	m.AddMissionAssignment(&models.MissionAssignment{
 		MissionID: 4,
 		RoverID:   0,

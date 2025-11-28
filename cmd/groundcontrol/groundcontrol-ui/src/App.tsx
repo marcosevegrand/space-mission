@@ -8,7 +8,6 @@ import {
   ApiResponse,
   OperationalState,
   MissionStatus,
-  FleetStatus,
 } from "./types";
 import {
   Wifi,
@@ -16,7 +15,7 @@ import {
   Satellite,
   Hammer,
   Moon,
-  HelpCircle, // Added for the interrogation mark
+  HelpCircle,
 } from "lucide-react";
 
 const API_URL = window.ENV?.API_URL || "http://localhost:8080";
@@ -24,9 +23,6 @@ const API_URL = window.ENV?.API_URL || "http://localhost:8080";
 function App() {
   const [rovers, setRovers] = useState<Telemetry[]>([]);
   const [missions, setMissions] = useState<MissionAssignment[]>([]);
-  const [fleetAvailability, setFleetAvailability] = useState<
-    Map<number, boolean>
-  >(new Map());
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
   const [roverFilter, setRoverFilter] = useState<string>("ALL");
@@ -40,27 +36,18 @@ function App() {
     isFetching.current = true;
 
     try {
-      const [roverRes, missionRes, fleetRes] = await Promise.all([
+      // Fleet status endpoint is removed; availability is now inside roverRes
+      const [roverRes, missionRes] = await Promise.all([
         fetch(`${API_URL}/api/rovers`),
         fetch(`${API_URL}/api/missions`),
-        fetch(`${API_URL}/api/fleet-status`),
       ]);
 
       const roverJson: ApiResponse<Telemetry[]> = await roverRes.json();
       const missionJson: ApiResponse<MissionAssignment[]> =
         await missionRes.json();
-      const fleetJson: ApiResponse<FleetStatus[]> = await fleetRes.json();
 
       if (roverJson.success) setRovers(roverJson.data || []);
       if (missionJson.success) setMissions(missionJson.data || []);
-
-      if (fleetJson.success) {
-        const map = new Map<number, boolean>();
-        fleetJson.data.forEach((item) => {
-          map.set(item.rover_id, item.is_available);
-        });
-        setFleetAvailability(map);
-      }
 
       setLastUpdate(new Date());
     } catch (err) {
@@ -95,9 +82,9 @@ function App() {
     })
     .sort((a, b) => a.MissionID - b.MissionID);
 
-  const availableRoversCount = Array.from(fleetAvailability.values()).filter(
-    (v) => v,
-  ).length;
+  // Availability calculated from has_mission boolean
+  const availableRoversCount = rovers.filter((r) => !r.has_mission).length;
+
   const maxMissionId = missions.reduce(
     (max, m) => Math.max(max, m.MissionID),
     0,
@@ -140,7 +127,9 @@ function App() {
               {rovers
                 .sort((a, b) => a.RoverID - b.RoverID)
                 .map((r) => {
-                  const isAvailable = fleetAvailability.get(r.RoverID) ?? false;
+                  // Use new has_mission property
+                  const isAvailable = !r.has_mission;
+
                   const isErrorOrUnknown =
                     r.OperationalState === OperationalState.Error ||
                     r.OperationalState === OperationalState.Unknown;
@@ -161,14 +150,14 @@ function App() {
                     title = "Busy / On Mission";
                   } else if (isErrorOrUnknown) {
                     // 2. AVAILABLE but ERROR/UNKNOWN
-                    containerClass = "bg-slate-900 border-slate-800 opacity-60"; // Dark Grey / Dim
+                    containerClass = "bg-slate-900 border-slate-800 opacity-60";
                     iconColor = "text-slate-600";
                     textColor = "text-slate-600";
                     IconComponent = HelpCircle;
                     title = "Offline / Error";
                   } else {
                     // 3. AVAILABLE and IDLE
-                    containerClass = "bg-slate-700 border-slate-500"; // Light Gray / White-ish
+                    containerClass = "bg-slate-700 border-slate-500";
                     iconColor = "text-slate-200";
                     textColor = "text-slate-200";
                     IconComponent = Moon;

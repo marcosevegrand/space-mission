@@ -82,6 +82,7 @@ func (m *Mothership) checkStaleMissions() error {
 				mission.Edit(
 					func(val *models.MissionAssignment) {
 						val.Status = models.MissionUnknown
+						val.RoverID = 0
 						m.roverHasMission.Store(val.RoverID, false)
 					},
 				)

@@ -19,14 +19,14 @@ func main() {
 		finalAPIURL = "http://" + finalAPIURL
 	}
 
-	// 2. Handle the dynamic config file
+	// Handle the dynamic config file
 	http.HandleFunc("/config.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		// Use finalAPIURL here
 		fmt.Fprintf(w, "window.ENV = { API_URL: '%s' };", finalAPIURL)
 	})
 
-	// 3. Serve static files
+	// Serve static files
 	fs := http.FileServer(http.Dir("./groundcontrol-ui/dist"))
 	http.Handle("/", fs)
 

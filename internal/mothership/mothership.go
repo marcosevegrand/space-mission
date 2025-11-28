@@ -22,7 +22,7 @@ type Mothership struct {
 	// keyed by rover ID
 	roverTelemetry  *xsync.Map[uint16, *safe.Var[models.Telemetry]] // it stores latest telemetry data of each rover
 	roverLastUpdate *xsync.Map[uint16, time.Time]                   // it stores the last update time of each rover
-	roverHasMission *xsync.Map[uint16, bool]                        // it stores whether each rover has a mission or not
+	roverHasMission *xsync.Map[uint16, bool]                        // it stores whether each rover has a mission assigned or not
 
 	// stale configs
 	staleMission int           // number of mission updates missing for a mission to be considered stale
@@ -30,6 +30,7 @@ type Mothership struct {
 
 	telemetryStream *tcpstream.Server[*models.Telemetry]
 	missionLink     *udplink.Peer[models.MissionMessage]
+	observationAPI  *APIServer
 
 	running  *safe.Var[bool]
 	stopChan chan struct{}
@@ -39,6 +40,7 @@ type Mothership struct {
 func NewMothership(
 	mothershipTSAddress string,
 	mothershipMLAddress string,
+	mothershipAPIAddress string,
 	staleMission int,
 	staleRover time.Duration,
 ) (*Mothership, error) {
@@ -84,6 +86,15 @@ func NewMothership(
 	}
 	m.missionLink = missionLink
 
+	observationAPI, err := NewAPIServer(
+		m,
+		mothershipAPIAddress,
+	)
+	if err != nil {
+		return nil, err
+	}
+	m.observationAPI = observationAPI
+
 	return m, nil
 }
 
@@ -98,22 +109,16 @@ func (m *Mothership) Start() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("[START] TELEMETRY STREAM")
 
 	err = m.missionLink.Start()
 	if err != nil {
 		return err
 	}
-	fmt.Println("[START] MISSION LINK")
 
-	// THIS IS HOW THE HTTP SERVER NEEDS TO LOOK IN THE FUTURE
-	// err := m.httpServer.Start()
-	// if err != nil {
-	// 	return err
-	// }
-
-	go m.StartHTTPServer("localhost:8080")
-	fmt.Println("[START] OBSERVATION API")
+	err = m.observationAPI.Start()
+	if err != nil {
+		return err
+	}
 
 	err = m.startStaleCheck()
 	if err != nil {
@@ -140,8 +145,11 @@ func (m *Mothership) Stop() error {
 	m.telemetryStream.Stop()
 	fmt.Println("[STOP] TELEMETRY STREAM")
 
+	m.observationAPI.Stop()
+	fmt.Println("[STOP] OBSERVATION API")
+
 	m.wg.Wait()
-	fmt.Println("[STOP] MOVERSHIP")
+	fmt.Println("[STOP] MOTHERSHIP")
 
 	return nil
 }

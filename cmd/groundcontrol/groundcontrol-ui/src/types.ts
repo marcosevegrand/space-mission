@@ -64,6 +64,7 @@ export interface GeographicArea {
   Coords: CoordsCircle | CoordsRectangle;
 }
 
+// Updated to match RoverResponse from api.go
 export interface Telemetry {
   RoverID: number;
   MissionID: number;
@@ -74,7 +75,10 @@ export interface Telemetry {
   Temperature: number;
   SystemHealth: SystemHealth;
   Timestamp: string;
+
+  // API specific fields added in RoverResponse
   last_updated: string;
+  has_mission: boolean;
 }
 
 export interface MissionAssignment {
@@ -90,12 +94,8 @@ export interface MissionAssignment {
   last_updated: string;
 }
 
-export interface FleetStatus {
-  rover_id: number;
-  is_available: boolean;
-}
-
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
+  error?: string;
 }
