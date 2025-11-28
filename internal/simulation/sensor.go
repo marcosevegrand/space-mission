@@ -23,7 +23,10 @@ type SensorModule struct {
 	carbon              float64
 	hydrogen            float64
 	oxygen              float64
-	minerals            []string
+	temperature         float64
+	lastCallTemp        time.Time
+	lastCallELev        time.Time
+	elevation           float64
 }
 
 type ImageMetadata struct {
@@ -41,6 +44,9 @@ func NewSensorModule() *SensorModule {
 		humidity:            50.0,
 		pressure:            1013.25,
 		co2:                 400.0,
+		lastCallTemp:        time.Now(),
+		lastCallELev:        time.Now(),
+		elevation:           0.0,
 	}
 }
 
@@ -151,6 +157,26 @@ func (s *SensorModule) GetHumidity() float64 {
 	return s.humidity
 }
 
+func (s *SensorModule) GetTemperature(lastCallTemp time.Time) float64 {
+	// Calculate time difference since last call
+	timeDiff := time.Since(s.lastCallTemp).Seconds()
+
+	// Simulate temperature changes within a range of ±1.5 degrees Celsius
+	deltaTemperature := (rand.Float64()*2 - 1) * 1.5
+	newTemperature := s.temperature + deltaTemperature*timeDiff
+
+	// Clamp temperature to a reasonable range (e.g., -10 to 45 degrees Celsius)
+	if newTemperature < -10 {
+		newTemperature = -10
+	} else if newTemperature > 45 {
+		newTemperature = 45
+	}
+
+	s.temperature = newTemperature
+	s.lastCallTemp = time.Now()
+	return s.temperature
+}
+
 func (s *SensorModule) GetPressure() float64 {
 	// Simulate pressure changes within a range of ±1 hPa
 	deltaPressure := (rand.Float64()*2 - 1) * 1.0
@@ -185,11 +211,9 @@ func (s *SensorModule) GetCO2Level() float64 {
 
 // SimulateSampleAnalysis simulates the analysis of soil samples
 func (s *SensorModule) SimulateSampleAnalysis() {
-	minerals := []string{"Olivina", "Piroxena", "Feldspato"}
 	s.carbon = rand.Float64() * 50
 	s.hydrogen = rand.Float64() * 50
 	s.oxygen = rand.Float64() * 50
-	s.minerals = minerals
 }
 
 func (s *SensorModule) GetCarbon() float64 {
@@ -204,22 +228,27 @@ func (s *SensorModule) GetOxygen() float64 {
 	return s.oxygen
 }
 
-func (s *SensorModule) GetMinerals() []string {
-	return s.minerals
-}
-
 // SimulateTerrainMapping simulates terrain mapping data
-func (s *SensorModule) SimulateTerrainMapping() [][]float64 {
-	// Generate a 5x5 grid of elevation data with random values
-	gridSize := 5
-	terrainData := make([][]float64, gridSize)
-	for i := range terrainData {
-		terrainData[i] = make([]float64, gridSize)
-		for j := range terrainData[i] {
-			terrainData[i][j] = rand.Float64() * 1000 // Elevation between 0 and 1000 meters
-		}
+func (s *SensorModule) GetElevation(lastCallELev time.Time) float64 {
+	// Calculate time difference since last call
+	timeDiff := time.Since(s.lastCallELev).Seconds()
+
+	// Simulate elevation changes within a range of ±1 meters per call
+	// Multiplied by timeDiff to make it proportional to time elapsed
+	deltaElevation := (rand.Float64()*2 - 1) * 1.0 * timeDiff
+
+	newElevation := s.elevation + deltaElevation
+
+	// Clamp elevation to a reasonable range (e.g., 0 to 1500 meters)
+	if newElevation < 0 {
+		newElevation = 0
+	} else if newElevation > 1500 {
+		newElevation = 1500
 	}
-	return terrainData
+
+	s.elevation = newElevation
+	s.lastCallELev = time.Now()
+	return s.elevation
 }
 
 func (s *SensorModule) SimulateImageCapture(position models.Point) ImageMetadata {

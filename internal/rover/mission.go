@@ -2,6 +2,7 @@ package rover
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"space-mission/pkg/models"
 	"space-mission/pkg/utils/geo"
 	"time"
@@ -206,11 +207,11 @@ func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Po
 	case models.TaskEnvironmentalMonitoring:
 		humidity := c.sensor.GetHumidity()
 		pressure := c.sensor.GetPressure()
-		internalTemp := int(c.sensor.GetInternalTemperature(0))
+		temperature := int(c.sensor.GetTemperature(time.Now()))
 		co2 := c.sensor.GetCO2Level()
 
 		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] Temperature: %dºC | Humidity: %.1f%% | Pressure: %.0fPa | CO2: %.0fppm",
-			timestamp, currentPosition.X, currentPosition.Y, internalTemp, humidity, pressure*100, co2)
+			timestamp, currentPosition.X, currentPosition.Y, temperature, humidity, pressure*100, co2)
 		return data, false
 
 	case models.TaskImageCapture:
@@ -225,28 +226,22 @@ func (c *ComputeElement) executeTask(task models.Task, currentPosition models.Po
 		carbon := c.sensor.GetCarbon()
 		hydrogen := c.sensor.GetHydrogen()
 		oxygen := c.sensor.GetOxygen()
-		minerals := c.sensor.GetMinerals()
+		minerals := []string{"Dolomite", "Mica", "Feldspar", "Quartz", "Pyroxene", "Galena", "Amphibole", "Olivine", "Hematite"}
+		mineral := minerals[rand.IntN(8)]
 
-		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] C:%.1f%% H:%.1f%% O:%.1f%% | Minerals: %v",
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] C:%.1f%% H:%.1f%% O:%.1f%% | Mineral: %v",
 			timestamp, currentPosition.X, currentPosition.Y,
-			carbon, hydrogen, oxygen, minerals)
+			carbon, hydrogen, oxygen, mineral)
 		return data, false
 
 	case models.TaskTerrainMapping:
-		terrainData := c.sensor.SimulateTerrainMapping()
-		avgElevation := 0.0
-		count := 0
-		for i := range terrainData {
-			for j := range terrainData[i] {
-				avgElevation += terrainData[i][j]
-				count++
-			}
-		}
-		avgElevation /= float64(count)
+		terrainelevation := c.sensor.GetElevation(time.Now())
+		soilTypes := []string{"Rocky", "Sandy", "Clay", "Gravel"}
+		soilType := soilTypes[rand.IntN(4)]
 
-		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] AvgElevation=%.1fm | GridSize=%dx%d | TerrainDataGenerated=true",
+		data := fmt.Sprintf("[%s - (%0.3f,%0.3f)] AvgElevation=%.1fm | SoilType=%s ",
 			timestamp, currentPosition.X, currentPosition.Y,
-			avgElevation, len(terrainData), len(terrainData[0]))
+			terrainelevation, soilType)
 		return data, false
 
 	default:
