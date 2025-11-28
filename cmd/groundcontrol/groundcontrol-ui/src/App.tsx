@@ -10,7 +10,13 @@ import {
   MissionStatus,
   FleetStatus,
 } from "./types";
-import { Wifi, Filter, Satellite, CheckCircle2, Hammer } from "lucide-react"; // Replaced XCircle with Hammer
+import {
+  Wifi,
+  Filter,
+  Satellite,
+  Hammer,
+  Moon, // Imported Moon for idle state
+} from "lucide-react";
 
 const API_URL = window.ENV?.API_URL || "http://localhost:8080";
 
@@ -134,26 +140,34 @@ function App() {
                 .sort((a, b) => a.RoverID - b.RoverID)
                 .map((r) => {
                   const isAvailable = fleetAvailability.get(r.RoverID) ?? false;
+
+                  // Logic Definition:
+                  // isAvailable = True -> HasMission is False -> IDLE (Grey, Sleeping)
+                  // isAvailable = False -> HasMission is True -> BUSY (Orange, Hammer)
+
                   return (
                     <div
                       key={r.RoverID}
                       className={`flex flex-col items-center justify-center p-2 rounded border transition-colors ${
-                        isAvailable
-                          ? "bg-green-900/20 border-green-900/50"
-                          : "bg-slate-800 border-slate-700 opacity-75" // Grey background for busy
+                        !isAvailable
+                          ? "bg-orange-900/10 border-orange-900/40" // Busy: Light Orange bg
+                          : "bg-slate-800 border-slate-700 opacity-60" // Idle: Grey bg
                       }`}
-                      title={isAvailable ? "Available" : "Busy/Working"}
+                      title={isAvailable ? "Available" : "Busy"}
                     >
                       <div className="mb-1">
-                        {isAvailable ? (
-                          <CheckCircle2 size={16} className="text-green-500" />
+                        {!isAvailable ? (
+                          // HasMission = True (Busy) -> Light Orange, Hammer
+                          <Hammer size={16} className="text-orange-400" />
                         ) : (
-                          // REPLACED: Red X -> Grey Hammer
-                          <Hammer size={16} className="text-slate-400" />
+                          // HasMission = False (Available) -> Grey, Sleeping
+                          <Moon size={16} className="text-slate-500" />
                         )}
                       </div>
                       <span
-                        className={`text-xs font-bold font-mono ${isAvailable ? "text-green-100" : "text-slate-400"}`}
+                        className={`text-xs font-bold font-mono ${
+                          !isAvailable ? "text-orange-200" : "text-slate-500"
+                        }`}
                       >
                         R{r.RoverID}
                       </span>
