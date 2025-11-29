@@ -158,6 +158,13 @@ func (c *ComputeElement) compute() error {
 				Sensors:     c.sensor.GetHealth(clockFrequency),
 				PowerSystem: c.power.GetHealth(clockFrequency),
 			}
+
+			if val.systemHealth.Motors == models.HealthCritical ||
+				val.systemHealth.Sensors == models.HealthCritical ||
+				val.systemHealth.PowerSystem == models.HealthCritical {
+				val.operationalState = models.StateError
+			}
+
 			val.batteryPercentage = c.power.GetBatteryPercentage(clockFrequency, val.operationalState)
 			val.temperature = c.sensor.GetInternalTemperature(clockFrequency)
 		},
@@ -294,20 +301,9 @@ func (c *ComputeElement) GetMissionRequest() (request models.MissionRequest, ski
 
 	opState := c.state.Get().operationalState
 
-	// Rover health is critical, should not request new missions
-	c.state.View(
-		func(val *stateVars) {
-			if val.systemHealth.Motors == models.HealthCritical ||
-				val.systemHealth.Sensors == models.HealthCritical ||
-				val.systemHealth.PowerSystem == models.HealthCritical {
-				skip = true
-			}
-		},
-	)
-
 	// If rover health is not critical, check if rover is idle
 	// If rover is idle, request a new mission
-	if !skip && opState == models.StateIdle {
+	if opState == models.StateIdle {
 		return models.MissionRequest{
 			RoverID:   c.roverID,
 			Position:  c.spatial.Get().currentPosition,

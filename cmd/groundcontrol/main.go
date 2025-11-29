@@ -10,7 +10,7 @@ import (
 
 func main() {
 	port := flag.String("port", ":3000", "Port to serve the website on")
-	apiURLInput := flag.String("api", "http://localhost:8080", "Mothership API URL")
+	apiURLInput := flag.String("api-addr", "10.0.0.21:7000", "Mothership API URL")
 	flag.Parse()
 
 	// If the user forgot "http://", add it automatically.

@@ -18,9 +18,9 @@ const (
 func main() {
 	// Define flags with default values
 	roverID := flag.Int("id", 1, "The unique ID of the rover")
-	mothershipTSAddress := flag.String("m-ts-addr", "localhost:8000", "Address of the Mothership Telemetry Stream")
-	mothershipMLAddress := flag.String("m-ml-addr", "localhost:9000", "Address of the Mothership Mission Link")
-	roverMLAddress := flag.String("r-ml-addr", "localhost:9001", "Address of the Rover Mission Link")
+	mothershipTSAddress := flag.String("m-ts-addr", "10.0.1.20:8000", "Address of the Mothership Telemetry Stream")
+	mothershipMLAddress := flag.String("m-ml-addr", "10.0.1.20:9000", "Address of the Mothership Mission Link")
+	roverMLAddress := flag.String("r-ml-addr", "10.0.9.20:9001", "Address of the Rover Mission Link")
 
 	// Parse the flags
 	flag.Parse()

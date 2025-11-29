@@ -274,7 +274,7 @@ func (s *Server[T]) handleConnection(conn *net.TCPConn) {
 
 			// Deserialize the payload using the configured decoder
 			data, err := s.decoder(payload)
-			s.file.Write("[DECODED] %v", data)
+			// s.file.Write("[DECODED] %v", data)
 			if err != nil {
 				s.file.Write("[ERROR] failed to decode payload: %s", err)
 				return

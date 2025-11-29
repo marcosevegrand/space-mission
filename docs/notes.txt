@@ -4,6 +4,10 @@ logo no mission update teriamos de ter um field data []byte para conter os dados
 assim sendo teriamos de ter um codec para esses dados, sem se quer me estar a referir ao codec necessário para
 serializar os dados para enviar na rede
 
+
+- FALTA VER NA UI A ROVER FLEET MUDAR ICON COM BASE NO ROVER StateError OU StateUnknown (COM ICONS DIFERENTES)
+- HOUVE MUDANÇA NO COMPUTE DO ROVER REQUESTS, CONFIRMAR QUE FUNCIONA QUANDO UM ROVER SE ESTRAGA, NAO FAZER PEDIDOS
+
 PROBLEMAS AGORA:
 - Um rover que estava a comunicar com mothership, tem o seu expected seq num incrementado do lado da mothership à medida que a mothership recebe pacotes desse rover. Se o rover falhar e o seu mission link for reinicializado o seu seq num é tbm resetado, no entanto, a motheship que já tem um histórico com o rover está à espera de um seqNum maior e descarta as mensagens do rover (como atrasadas/duplicadas) até elas chegarem ao seqNum que o rover tinha antes da falha do rover.
 ^^ RESOLVIDO -> criando um sessionID

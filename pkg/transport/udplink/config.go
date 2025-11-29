@@ -64,7 +64,7 @@ var (
 	DefaultFECConfig = FECConfig{
 		MTU:              1400,
 		MinDataShards:    10,
-		ParityShardRatio: 0.3,
+		ParityShardRatio: 0,
 	}
 
 	// DefaultConfig is the standard, recommended configuration with all features enabled.

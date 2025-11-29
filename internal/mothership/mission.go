@@ -168,6 +168,16 @@ func (m *Mothership) updateMission(update *models.MissionUpdate) error {
 	if status == models.MissionCompleted || status == models.MissionFailed {
 		return fmt.Errorf("Completed or failed mission do not expect updates")
 	}
+	if status == models.MissionUnknown {
+		// if mission was marked as unknown means updates weren't being received
+		// and the rover assigned to the mission was marked as free
+		// now that the rover has reconnected and we have received fresh updates
+		// we need to reassigned the rover to the mission
+		container.Edit(func(val *models.MissionAssignment) {
+			val.RoverID = update.RoverID
+		})
+		m.roverHasMission.Store(update.RoverID, true)
+	}
 
 	// Update mission assignment
 	container.Edit(func(val *models.MissionAssignment) {

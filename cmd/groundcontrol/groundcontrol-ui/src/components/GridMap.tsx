@@ -234,47 +234,111 @@ export default function GridMap({ rovers, missions }: GridMapProps) {
       const vx = r.Velocity.X;
       const vy = r.Velocity.Y;
 
+      // 1. Draw Velocity Vector Line
       if (Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01) {
         ctx.beginPath();
         ctx.moveTo(pos.x, pos.y);
         const mag = Math.sqrt(vx * vx + vy * vy);
         const dirX = vx / mag;
         const dirY = vy / mag;
-        const vecEnd = { x: pos.x + dirX * 20, y: pos.y - dirY * 20 };
+        const vecEnd = { x: pos.x + dirX * 25, y: pos.y - dirY * 25 };
         ctx.lineTo(vecEnd.x, vecEnd.y);
-        ctx.strokeStyle = "#fff";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
         ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]); // Dashed line for velocity
         ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
       }
 
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
-
+      // 2. Determine Rover Body Color based on State
+      let bodyColor = "#64748b"; // Unknown/Default (Gray)
       switch (r.OperationalState) {
         case OperationalState.Idle:
-          ctx.fillStyle = "#f97316";
+          bodyColor = "#f97316"; // Orange
           break;
         case OperationalState.On_Mission:
-          ctx.fillStyle = "#3b82f6";
+          bodyColor = "#3b82f6"; // Blue
           break;
         case OperationalState.Error:
-          ctx.fillStyle = "#ef4444";
-          break;
-        default:
-          ctx.fillStyle = "#64748b";
+          bodyColor = "#ef4444"; // Red
           break;
       }
 
+      // 3. Draw Rover Icon (Side View - Larger)
+      const S = 1.8; // Scale multiplier for size
+
+      // Wheels
+      ctx.fillStyle = "#1e293b"; // Dark Slate
+      ctx.strokeStyle = "#475569"; // Outline color
+      ctx.lineWidth = 1 * S;
+
+      const wheelRadius = 3 * S;
+      const wheelOffsetY = 4 * S;
+      const wheelOffsetX = 5 * S;
+
+      // Rear Wheel
+      ctx.beginPath();
+      ctx.arc(
+        pos.x - wheelOffsetX,
+        pos.y + wheelOffsetY,
+        wheelRadius,
+        0,
+        2 * Math.PI,
+      );
       ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
       ctx.stroke();
 
+      // Front Wheel
+      ctx.beginPath();
+      ctx.arc(
+        pos.x + wheelOffsetX,
+        pos.y + wheelOffsetY,
+        wheelRadius,
+        0,
+        2 * Math.PI,
+      );
+      ctx.fill();
+      ctx.stroke();
+
+      // Chassis (Body)
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath();
+      // Scaled offsets relative to center pos
+      ctx.moveTo(pos.x - 7 * S, pos.y + 4 * S); // Bottom rear
+      ctx.lineTo(pos.x - 7 * S, pos.y - 1 * S); // Top rear
+      ctx.lineTo(pos.x + 3 * S, pos.y - 1 * S); // Base of neck
+      ctx.lineTo(pos.x + 7 * S, pos.y + 2 * S); // Nose
+      ctx.lineTo(pos.x + 7 * S, pos.y + 4 * S); // Bottom front
+      ctx.closePath();
+      ctx.fill();
+
+      // Body Outline
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 1 * S;
+      ctx.stroke();
+
+      // Mast
+      ctx.fillStyle = "#cbd5e1"; // Light grey
+      ctx.fillRect(pos.x + 1 * S, pos.y - 6 * S, 2 * S, 5 * S);
+
+      // Head / Sensor
+      ctx.fillStyle = "#ffffff";
+      // Adjusted x offset for scaling
+      ctx.fillRect(pos.x + 0.5 * S, pos.y - 8 * S, 4 * S, 3 * S);
+
+      // Solar Panel Detail (Darker patch on back)
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.fillRect(pos.x - 6 * S, pos.y - 0.5 * S, 5 * S, 2 * S);
+
+      // 4. Draw Label (Scaled and offset)
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 12px monospace";
+      // Scale font size slightly, capping it
+      const fontSize = Math.min(12 * S, 16);
+      ctx.font = `bold ${fontSize}px monospace`;
       ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(`R${r.RoverID}`, pos.x + 8, pos.y - 8);
+      ctx.textBaseline = "middle";
+      // Increased offset for larger icon
+      ctx.fillText(`R${r.RoverID}`, pos.x + 12 * S, pos.y - 4 * S);
     });
   }, [rovers, missions, zoom, pan, dimensions]);
 

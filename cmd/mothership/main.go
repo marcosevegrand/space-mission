@@ -16,11 +16,17 @@ const (
 	staleRover   = 5 * time.Second
 )
 
+var (
+	defaultMothershipTSAddress  = "10.0.1.20:8000"
+	defaultMothershipMLAddress  = "10.0.1.20:9000"
+	defaultMothershipAPIAddress = "10.0.0.21:7000"
+)
+
 func main() {
 	// Define flags with default values
-	mothershipTSAddress := flag.String("ts-addr", "localhost:8000", "Address of the Mothership Telemetry Stream")
-	mothershipMLAddress := flag.String("ml-addr", "localhost:9000", "Address of the Mothership Mission Link")
-	mothershipAPIAddress := flag.String("api-addr", "localhost:8080", "Address of the Mothership Observation API")
+	mothershipTSAddress := flag.String("ts-addr", defaultMothershipTSAddress, "Address of the Mothership Telemetry Stream")
+	mothershipMLAddress := flag.String("ml-addr", defaultMothershipMLAddress, "Address of the Mothership Mission Link")
+	mothershipAPIAddress := flag.String("api-addr", defaultMothershipAPIAddress, "Address of the Mothership Observation API")
 
 	// Parse the flags
 	flag.Parse()
