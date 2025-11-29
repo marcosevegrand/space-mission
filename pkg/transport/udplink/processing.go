@@ -33,9 +33,11 @@ func (p *Peer[T]) processFragment(fragmentBytes []byte, remote *net.UDPAddr) err
 
 func (p *Peer[T]) handleAck(f *Fragment, remote *net.UDPAddr) error {
 	// UPDATED: Use canonical address for key lookup
+	// UPDATED: Use the sessionID provided in the ACK (Echoed Session ID)
+	// This matches the specific SessionID we used when sending the packet.
 	key := packetKey{
 		addr:      canonicalizeAddr(remote.String()),
-		sessionID: p.sessionID,
+		sessionID: f.sessionID, // Was p.sessionID
 		seqNum:    f.seqNum,
 	}
 
@@ -79,7 +81,9 @@ func (p *Peer[T]) handleAck(f *Fragment, remote *net.UDPAddr) error {
 }
 
 func (p *Peer[T]) handleData(f *Fragment, remote *net.UDPAddr) error {
-	if err := p.sendAck(p.sessionID, f.seqNum, f.fragmentID, f.dataShards, f.parityShards, remote); err != nil {
+	// UPDATED: Echo the sender's SessionID back in the ACK.
+	// This ensures the sender knows which session this ACK belongs to.
+	if err := p.sendAck(f.sessionID, f.seqNum, f.fragmentID, f.dataShards, f.parityShards, remote); err != nil {
 		p.lf.Write("[WARN] Failed to send ACK for fragment %d (seqNum %d) from %s: %v", f.seqNum, f.fragmentID, remote, err)
 	}
 

@@ -3,6 +3,7 @@ package udplink
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net"
 	"space-mission/pkg/utils/safe"
 	"time"
@@ -16,7 +17,7 @@ func (p *Peer[T]) Send(data T, addr string) error {
 		return fmt.Errorf("peer is not running")
 	}
 
-	// UPDATED: Canonicalize address to ensure sequence number continuity
+	// Canonicalize address to ensure map lookups are consistent
 	cleanAddr := canonicalizeAddr(addr)
 
 	remote, err := net.ResolveUDPAddr("udp", cleanAddr)
@@ -33,6 +34,19 @@ func (p *Peer[T]) Send(data T, addr string) error {
 	if len(payload) == 0 {
 		return fmt.Errorf("payload size must be greater than 0")
 	}
+
+	// ---------------------------------------------------------
+	// SESSION MANAGEMENT (The Fix)
+	// We retrieve or create a unique Session ID for this specific destination.
+	// If the destination changes (e.g. from 10.0.1.20 to 10.0.2.20),
+	// we will generate a NEW session ID for the new IP.
+	// ---------------------------------------------------------
+	sessionID, _ := p.outgoingSessions.LoadOrCompute(
+		cleanAddr,
+		func() (uint32, bool) {
+			return rand.Uint32(), false
+		},
+	)
 
 	var shards [][]byte
 	var dataShards, parityShards int
@@ -58,7 +72,7 @@ func (p *Peer[T]) Send(data T, addr string) error {
 	}
 	totalShards := dataShards + parityShards
 
-	// Use cleanAddr for sequence number lookup
+	// Resolve Sequence Number for this destination
 	seqNumVar, _ := p.localNextSeqNums.LoadOrCompute(
 		cleanAddr,
 		func() (*safe.Var[uint32], bool) {
@@ -86,22 +100,22 @@ func (p *Peer[T]) Send(data T, addr string) error {
 	packet.Edit(func(pkt *sentPacket) {
 		for i, shard := range shards {
 			isFEC := i >= dataShards
+			// Use the per-destination sessionID here
 			pkt.fragments[i] = BuildDataFragment(
-				p.sessionID, seqNum, uint16(i), uint16(dataShards), uint16(parityShards), isFEC, shard,
+				sessionID, seqNum, uint16(i), uint16(dataShards), uint16(parityShards), isFEC, shard,
 			)
 		}
 	})
 
-	// Use cleanAddr for packet tracking
+	// Store the packet using the correct session ID in the key
 	p.sentPackets.Store(
-		packetKey{cleanAddr, p.sessionID, seqNum},
+		packetKey{cleanAddr, sessionID, seqNum},
 		packet,
 	)
 
 	// Send initial transmission
 	packet.View(func(pkt *sentPacket) {
 		for _, frag := range pkt.fragments {
-			// UPDATED: Log errors if send fails
 			if err := p.sendFragment(frag, remote); err != nil {
 				p.lf.Write("[ERROR] Failed to send initial fragment for seq %d to %s: %v", seqNum, cleanAddr, err)
 			}

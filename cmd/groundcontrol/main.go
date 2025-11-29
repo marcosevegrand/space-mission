@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings" // <--- Import this
+	"strings"
 )
 
 func main() {
 	port := flag.String("port", ":3000", "Port to serve the website on")
-	apiURLInput := flag.String("api-addr", "10.0.0.21:7000", "Mothership API URL")
+	apiURLInput := flag.String("api-addr", "10.0.0.21:7000", "Mothership Observation API URL")
 	flag.Parse()
 
-	// If the user forgot "http://", add it automatically.
+	// If the user forgot "http://", add it automatically
 	finalAPIURL := *apiURLInput
 	if !strings.HasPrefix(finalAPIURL, "http://") && !strings.HasPrefix(finalAPIURL, "https://") {
 		finalAPIURL = "http://" + finalAPIURL
@@ -22,7 +22,6 @@ func main() {
 	// Handle the dynamic config file
 	http.HandleFunc("/config.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
-		// Use finalAPIURL here
 		fmt.Fprintf(w, "window.ENV = { API_URL: '%s' };", finalAPIURL)
 	})
 

@@ -2,7 +2,6 @@ package udplink
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -18,16 +17,20 @@ import (
 // Peer manages all aspects of reliable UDP communication.
 type Peer[T any] struct {
 	// --- Core components ---
-	addr      string
-	sessionID uint32
-	conn      *net.UDPConn
-	lf        *logfile.File
-	config    Config
-	encoder   interfaces.Encoder[T]
-	decoder   interfaces.Decoder[T]
-	handler   interfaces.Handler[T]
+	addr    string
+	conn    *net.UDPConn
+	lf      *logfile.File
+	config  Config
+	encoder interfaces.Encoder[T]
+	decoder interfaces.Decoder[T]
+	handler interfaces.Handler[T]
 
 	// --- Shared/Concurrent State ---
+
+	// outgoingSessions maps a Destination Address -> Session ID.
+	// This ensures we maintain a unique, consistent identity per network path.
+	outgoingSessions *xsync.Map[string, uint32]
+
 	sentPackets       *xsync.Map[packetKey, *safe.Var[sentPacket]]
 	localNextSeqNums  *xsync.Map[string, *safe.Var[uint32]]
 	recvPackets       *xsync.Map[packetKey, *safe.Var[receivedPacket]]
@@ -63,20 +66,21 @@ func NewPeer[T any](
 	}
 
 	return &Peer[T]{
-		addr:      addr,
-		sessionID: rand.Uint32(),
-		lf:        lf,
-		config:    config,
-		encoder:   encoder,
-		decoder:   decoder,
-		handler:   handler,
+		addr:    addr,
+		lf:      lf,
+		config:  config,
+		encoder: encoder,
+		decoder: decoder,
+		handler: handler,
+
+		// Initialize the map to track sessions per destination
+		outgoingSessions: xsync.NewMap[string, uint32](),
 
 		sentPackets:      xsync.NewMap[packetKey, *safe.Var[sentPacket]](),
 		localNextSeqNums: xsync.NewMap[string, *safe.Var[uint32]](),
 		recvPackets:      xsync.NewMap[packetKey, *safe.Var[receivedPacket]](),
 		recvQueue:        xsync.NewMap[string, *safe.List[pendingPayload]](),
 
-		// Initialize thread-safe maps for delivery state
 		remoteSessionIDs:  xsync.NewMap[string, uint32](),
 		remoteNextSeqNums: xsync.NewMap[string, uint32](),
 		gapSince:          xsync.NewMap[string, time.Time](),

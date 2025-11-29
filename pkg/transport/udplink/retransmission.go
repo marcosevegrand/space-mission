@@ -78,6 +78,7 @@ func (p *Peer[T]) checkRetransmissions() {
 			if !ready {
 				return true // continue iterating the map
 			}
+			p.lf.Write("[RT-X] packet %d requires retransmission", key.seqNum)
 
 			// Identify the unacked fragments and retransmit them
 			pktVar.View(
