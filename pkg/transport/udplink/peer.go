@@ -53,7 +53,7 @@ func NewPeer[T any](
 	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.Handler[T],
 	config Config,
 ) (*Peer[T], error) {
-	lf, err := logfile.NewLogFile(logFileName)
+	lf, err := logfile.New(logFileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create log file: %w", err)
 	}

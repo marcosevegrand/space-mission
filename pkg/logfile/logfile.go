@@ -10,7 +10,7 @@ type File struct {
 	file *os.File
 }
 
-func NewLogFile(filename string) (*File, error) {
+func New(filename string) (*File, error) {
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err

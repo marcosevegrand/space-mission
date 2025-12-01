@@ -18,7 +18,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 
-const API_URL = window.ENV?.API_URL || "http://localhost:8080";
+const API_URL = window.ENV?.API_URL || "http://localhost:8003";
 
 function App() {
   const [rovers, setRovers] = useState<Telemetry[]>([]);

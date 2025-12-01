@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -25,9 +26,6 @@ func main() {
 	// Parse the flags
 	flag.Parse()
 
-	log.Printf("Starting Rover %d on %s (Targeting Mothership TS: %s, ML: %s)",
-		*roverID, *roverMLAddress, *mothershipTSAddress, *mothershipMLAddress)
-
 	r, err := rover.NewRover(
 		uint16(*roverID),
 		*mothershipTSAddress,
@@ -41,6 +39,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	fmt.Println("=======================================================")
+	fmt.Printf("       ROVER SERVICES STARTED (%s)\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Println("=======================================================")
+	fmt.Printf("Telemetry Stream (Mothership)   -   %s\n", *mothershipTSAddress)
+	fmt.Printf("Mission Link (Mothership)       -   %s\n", *mothershipMLAddress)
+	fmt.Printf("Mission Link (Rover)            -   %s\n", *roverMLAddress)
+	fmt.Println("-------------------------------------------------------")
+
 	// Create a channel to listen for interrupt (Ctrl+C)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -49,8 +55,10 @@ func main() {
 	<-sigChan
 
 	if err := r.Stop(); err != nil {
-		log.Printf("Error stopping rover: %v", err)
+		fmt.Printf("\n\n")
+		log.Printf("| Error stopping rover: %v", err)
 	} else {
-		log.Println("Rover stopped successfully.")
+		fmt.Printf("\n\n")
+		log.Printf("| Rover stopped successfully.\n")
 	}
 }

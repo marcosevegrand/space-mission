@@ -101,7 +101,7 @@ func NewClient[T any](
 	}
 
 	// Create log file
-	file, err := logfile.NewLogFile(fileName)
+	file, err := logfile.New(fileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create log file: %w", err)
 	}

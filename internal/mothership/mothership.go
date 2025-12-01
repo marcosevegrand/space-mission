@@ -3,6 +3,7 @@ package mothership
 import (
 	"fmt"
 	"space-mission/pkg/codecs"
+	"space-mission/pkg/logfile"
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcpstream"
 	"space-mission/pkg/transport/udplink"
@@ -32,6 +33,7 @@ type Mothership struct {
 	missionLink     *udplink.Peer[models.MissionMessage]
 	observationAPI  *APIServer
 
+	lf       *logfile.File
 	running  *safe.Var[bool]
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -95,6 +97,12 @@ func NewMothership(
 	}
 	m.observationAPI = observationAPI
 
+	lf, err := logfile.New("mothership.log")
+	if err != nil {
+		return nil, err
+	}
+	m.lf = lf
+
 	return m, nil
 }
 
@@ -105,20 +113,25 @@ func (m *Mothership) Start() error {
 
 	m.running.Set(true)
 
+	m.lf.Write("[START] Mothership")
+
 	err := m.telemetryStream.Start()
 	if err != nil {
 		return err
 	}
+	m.lf.Write("[START] Telemetry Stream")
 
 	err = m.missionLink.Start()
 	if err != nil {
 		return err
 	}
+	m.lf.Write("[START] Mission Link")
 
 	err = m.observationAPI.Start()
 	if err != nil {
 		return err
 	}
+	m.lf.Write("[START] Observation API")
 
 	err = m.startStaleCheck()
 	if err != nil {
@@ -140,16 +153,16 @@ func (m *Mothership) Stop() error {
 	close(m.stopChan)
 
 	m.missionLink.Stop()
-	fmt.Println("[STOP] MISSION LINK")
+	m.lf.Write("[STOP] MISSION LINK")
 
 	m.telemetryStream.Stop()
-	fmt.Println("[STOP] TELEMETRY STREAM")
+	m.lf.Write("[STOP] TELEMETRY STREAM")
 
 	m.observationAPI.Stop()
-	fmt.Println("[STOP] OBSERVATION API")
+	m.lf.Write("[STOP] OBSERVATION API")
 
 	m.wg.Wait()
-	fmt.Println("[STOP] MOTHERSHIP")
+	m.lf.Write("[STOP] MOTHERSHIP")
 
 	return nil
 }
