@@ -12,7 +12,7 @@ ROVER_BIN := $(BIN_DIR)/rover
 GC_CMD := ./cmd/groundcontrol
 MS_CMD := ./cmd/mothership
 ROVER_CMD := ./cmd/rover
-GC_UI_SRC := ./web/groundcontrol
+GC_UI_SRC := ./ui/groundcontrol
 
 # .PHONY tells Make that these targets are not actual files
 .PHONY: all clean help groundcontrol mothership rover ui-groundcontrol
@@ -50,7 +50,6 @@ ui-groundcontrol:
 mothership:
 	@echo "🛸 Building Mothership..."
 	@mkdir -p $(MS_BIN)
-	@mkdir -p $(MS_BIN)/assets
 	# Build the Go binary
 	go build -o $(MS_BIN)/mothership $(MS_CMD)
 	@echo "✅ Mothership built successfully!"
@@ -64,8 +63,6 @@ rover:
 	@mkdir -p $(ROVER_BIN)
 	# Build the Go binary
 	go build -o $(ROVER_BIN)/rover $(ROVER_CMD)
-	# (Optional) Create multiple rover configs or binaries if needed for simulation
-	@cp $(ROVER_BIN)/rover $(ROVER_BIN)/rover-1
 	@echo "✅ Rover built successfully!"
 
 # ==============================================================================

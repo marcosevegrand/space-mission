@@ -1,89 +1,79 @@
-// package udplink provides a reliable UDP communication layer.
-// This file defines the configuration structures and default values for a Peer.
 package udplink
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 const (
 	DefaultLoopTick = 50 * time.Millisecond
 )
 
-// FECConfig holds parameters for Forward Error Correction.
-// The ratio of parity shards determines redundancy. Shard counts for each
-// message are calculated dynamically based on this ratio and the message size.
-type FECConfig struct {
-	MTU              int     // The largest transferable fragment size in bytes (includes the header size)
-	MinDataShards    int     // Minimum amount of data shards
-	ParityShardRatio float64 // The parity ratio (0-1) of the FEC (e.g., 0.3 ratio = 10 data + 3 parity)
-}
-
-// RetransmissionConfig holds parameters for the retransmission mechanism.
-type RetransmissionConfig struct {
-	MaxRetries        int           // The maximum number of times a fragment will be retransmitted before failing (0 = infinite, tho not recommended as it may cause memory leaks)
-	InitialBackoff    time.Duration // Initial backoff duration (e.g., 1s)
-	MaxBackoff        time.Duration // Maximum backoff duration (e.g., 60s)
-	BackoffMultiplier float64       // Multiplier for exponential backoff (e.g., 2.0)
-}
-
-// TimeoutConfig holds various timeout parameters for network operations.
-type TimeoutConfig struct {
-	Read    time.Duration // The deadline for network read operations.
-	Write   time.Duration // The deadline for network write operations.
-	RecvTTL time.Duration // Time-to-live for incomplete packets on the receiver side before cleanup.
-	InOrder time.Duration // Time to wait for expected sequence numbers before incrementing it.
-}
-
-// Config is the master configuration for a Peer.
+// Config holds all tunable parameters for the UDP Peer.
 type Config struct {
 	Timeouts           TimeoutConfig
 	Retransmission     RetransmissionConfig
 	FEC                FECConfig
-	MaxRecvWorkers     int // For processing incoming fragments
-	MaxDeliveryWorkers int // For delivering packets to the application
+	MaxRecvWorkers     int // Max concurrent goroutines for processing incoming packets
+	MaxDeliveryWorkers int // Max concurrent goroutines for delivering payloads to app
 }
 
-// --- Default Configurations ---
-var (
-	// DefaultTimeoutConfig provides sensible default timeouts.
-	DefaultTimeoutConfig = TimeoutConfig{
+type FECConfig struct {
+	MTU              int     // Max Transfer Unit (bytes) including header
+	MinDataShards    int     // Minimum fragments to split a packet into
+	ParityShardRatio float64 // Ratio of parity shards (0.0 - 1.0)
+}
+
+type RetransmissionConfig struct {
+	MaxRetries        int           // Max retransmissions before drop (0 = unsafe infinite)
+	InitialBackoff    time.Duration // Start duration for backoff
+	MaxBackoff        time.Duration // Cap for backoff duration
+	BackoffMultiplier float64       // Exponential factor (e.g. 2.0)
+}
+
+type TimeoutConfig struct {
+	Read    time.Duration // Socket read deadline
+	Write   time.Duration // Socket write deadline
+	RecvTTL time.Duration // Max time to hold incomplete packets in memory
+	InOrder time.Duration // Max blocking time waiting for a missing sequence number
+}
+
+// Validate checks the configuration for logical errors.
+func (c *Config) Validate() error {
+	if c.Timeouts.Read <= 0 {
+		return fmt.Errorf("read timeout must be positive")
+	}
+	if c.Timeouts.Write <= 0 {
+		return fmt.Errorf("write timeout must be positive")
+	}
+	if c.MaxRecvWorkers < 1 {
+		return fmt.Errorf("MaxRecvWorkers must be at least 1")
+	}
+	if c.FEC.MTU <= HeaderSize {
+		return fmt.Errorf("MTU must be larger than HeaderSize (%d)", HeaderSize)
+	}
+	return nil
+}
+
+// DefaultConfig provides a recommended baseline configuration.
+var DefaultConfig = Config{
+	Timeouts: TimeoutConfig{
 		Read:    3 * time.Second,
 		Write:   3 * time.Second,
-		RecvTTL: 240 * time.Second, // received TTL should be significantly larger than Max Retransmission Backoff
+		RecvTTL: 128 * time.Second,
 		InOrder: 2 * time.Second,
-	}
-
-	// DefaultRetransmissionConfig provides standard settings for retransmissions.
-	DefaultRetransmissionConfig = RetransmissionConfig{
-		MaxRetries:        15,
+	},
+	Retransmission: RetransmissionConfig{
+		MaxRetries:        6,
 		InitialBackoff:    1 * time.Second,
-		MaxBackoff:        120 * time.Second,
-		BackoffMultiplier: 2,
-	}
-
-	// DefaultFECConfig sets FEC fragment size to 512 bytes with a 10:3 data-to-parity ratio.
-	DefaultFECConfig = FECConfig{
+		MaxBackoff:        64 * time.Second,
+		BackoffMultiplier: 2.0,
+	},
+	FEC: FECConfig{
 		MTU:              1400,
 		MinDataShards:    10,
-		ParityShardRatio: 0,
-	}
-
-	// DefaultConfig is the standard, recommended configuration with all features enabled.
-	DefaultConfig = Config{
-		Timeouts:           DefaultTimeoutConfig,
-		Retransmission:     DefaultRetransmissionConfig,
-		FEC:                DefaultFECConfig,
-		MaxRecvWorkers:     10000,
-		MaxDeliveryWorkers: 100,
-	}
-
-	// NoFECConfig provides a configuration with FEC disabled, relying only on retransmissions.
-	NoFECConfig = Config{
-		Timeouts:       DefaultTimeoutConfig,
-		Retransmission: DefaultRetransmissionConfig,
-		FEC: FECConfig{
-			MTU:              1400,
-			MinDataShards:    0,
-			ParityShardRatio: 0,
-		},
-	}
-)
+		ParityShardRatio: 0.3,
+	},
+	MaxRecvWorkers:     10000,
+	MaxDeliveryWorkers: 100,
+}

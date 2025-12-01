@@ -54,8 +54,6 @@ func (m *Mothership) AddMissionAssignment(assignment *models.MissionAssignment) 
 	// Add the mission assignment to the unassigned missions list
 	m.unassignedMissions.PushBack(assignment.MissionID)
 
-	fmt.Printf("[ADD] mission assignment %03d\n", assignment.MissionID)
-
 	return nil
 }
 
@@ -84,6 +82,7 @@ func (m *Mothership) assignMission(roverID uint16, position models.Point) (model
 
 	// Check if rover state is unknown or error,
 	// we don't want to assign a mission to a rover in those states
+	// even if a mission request was received
 	var ignore bool
 	_, ok := m.roverTelemetry.Compute(
 		roverID,

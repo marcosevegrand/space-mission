@@ -14,9 +14,10 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
-// Peer manages all aspects of reliable UDP communication.
+// Peer represents a node in the reliable UDP network.
+// It handles fragmentation, reliability (ACKs/Retries), and ordering.
 type Peer[T any] struct {
-	// --- Core components ---
+	// --- Configuration & IO ---
 	addr    string
 	conn    *net.UDPConn
 	lf      *logfile.File
@@ -25,21 +26,27 @@ type Peer[T any] struct {
 	decoder interfaces.Decoder[T]
 	handler interfaces.Handler[T]
 
-	// --- Shared/Concurrent State ---
-
-	// outgoingSessions maps a Destination Address -> Session ID.
-	// This ensures we maintain a unique, consistent identity per network path.
+	// --- Outgoing State ---
+	// outgoingSessions maps "IP:Port" -> SessionID.
 	outgoingSessions *xsync.Map[string, uint32]
+	// sentPackets tracks unacknowledged packets for retransmission.
+	sentPackets *xsync.Map[packetKey, *safe.Var[sentPacket]]
+	// localNextSeqNums tracks the next Sequence Number to use for a destination.
+	localNextSeqNums *xsync.Map[string, *safe.Var[uint32]]
 
-	sentPackets       *xsync.Map[packetKey, *safe.Var[sentPacket]]
-	localNextSeqNums  *xsync.Map[string, *safe.Var[uint32]]
-	recvPackets       *xsync.Map[packetKey, *safe.Var[receivedPacket]]
-	recvQueue         *xsync.Map[string, *safe.List[pendingPayload]]
-	remoteSessionIDs  *xsync.Map[string, uint32]
+	// --- Incoming State ---
+	// recvPackets stores fragments of incomplete incoming messages.
+	recvPackets *xsync.Map[packetKey, *safe.Var[receivedPacket]]
+	// recvQueue buffers fully reassembled messages waiting for in-order delivery.
+	recvQueue *xsync.Map[string, *safe.List[pendingPayload]]
+	// remoteSessionIDs tracks the active SessionID for a sender to detect resets.
+	remoteSessionIDs *xsync.Map[string, uint32]
+	// remoteNextSeqNums tracks the next expected Sequence Number from a sender.
 	remoteNextSeqNums *xsync.Map[string, uint32]
-	gapSince          *xsync.Map[string, time.Time]
+	// gapSince tracks how long we've been waiting for a missing sequence number.
+	gapSince *xsync.Map[string, time.Time]
 
-	// --- Goroutine lifecycle ---
+	// --- Concurrency Control ---
 	recvWorkers     *pool.WorkerPool
 	deliveryWorkers *pool.WorkerPool
 	running         *safe.Var[bool]
@@ -53,16 +60,14 @@ func NewPeer[T any](
 	encoder interfaces.Encoder[T], decoder interfaces.Decoder[T], handler interfaces.Handler[T],
 	config Config,
 ) (*Peer[T], error) {
+
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	lf, err := logfile.New(logFileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create log file: %w", err)
-	}
-
-	if config.Timeouts.Read <= 0 {
-		return nil, fmt.Errorf("timeouts must be positive")
-	}
-	if config.MaxRecvWorkers < 1 {
-		return nil, fmt.Errorf("workers must be positive")
 	}
 
 	return &Peer[T]{
@@ -152,6 +157,7 @@ func (p *Peer[T]) Stop() error {
 }
 
 // canonicalizeAddr normalizes addresses.
+// mainly for local/dev use to treat localhost, 127.0.0.1 (IPv4), and ::1 (IPv6) ambiguity
 func canonicalizeAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
