@@ -9,7 +9,7 @@ import (
 const (
 	// Header Field Sizes (in bytes)
 	sizeFlags        = 1
-	sizeSessionID    = 4
+	sizeCID          = 4
 	sizeSeqNum       = 4
 	sizeFragmentID   = 2
 	sizeDataShards   = 2
@@ -17,12 +17,12 @@ const (
 	sizeChecksum     = 4
 
 	// HeaderSize defines the total size of the fragment header.
-	HeaderSize = sizeFlags + sizeSessionID + sizeSeqNum + sizeFragmentID + sizeDataShards + sizeParityShards + sizeChecksum
+	HeaderSize = sizeFlags + sizeCID + sizeSeqNum + sizeFragmentID + sizeDataShards + sizeParityShards + sizeChecksum
 
 	// Header Offsets
 	offsetFlags        = 0
-	offsetSessionID    = offsetFlags + sizeFlags
-	offsetSeqNum       = offsetSessionID + sizeSessionID
+	offsetCID          = offsetFlags + sizeFlags
+	offsetSeqNum       = offsetCID + sizeCID
 	offsetFragmentID   = offsetSeqNum + sizeSeqNum
 	offsetDataShards   = offsetFragmentID + sizeFragmentID
 	offsetParityShards = offsetDataShards + sizeDataShards
@@ -38,7 +38,7 @@ const (
 // Fragment represents a single UDP packet unit including protocol metadata.
 type Fragment struct {
 	flags        uint8
-	sessionID    uint32
+	cid          uint32
 	seqNum       uint32
 	fragmentID   uint16
 	dataShards   uint16
@@ -48,7 +48,7 @@ type Fragment struct {
 }
 
 // BuildDataFragment constructs a binary packet for data transmission.
-func BuildDataFragment(sessionID, seqNum uint32, fragmentID, dataShards, parityShards uint16, isFEC bool, payload []byte) []byte {
+func BuildDataFragment(cid, seqNum uint32, fragmentID, dataShards, parityShards uint16, isFEC bool, payload []byte) []byte {
 	flags := FlagDATA
 	if isFEC {
 		flags |= FlagFEC
@@ -58,7 +58,7 @@ func BuildDataFragment(sessionID, seqNum uint32, fragmentID, dataShards, parityS
 
 	// Write Header
 	buf[offsetFlags] = flags
-	binary.BigEndian.PutUint32(buf[offsetSessionID:], sessionID)
+	binary.BigEndian.PutUint32(buf[offsetCID:], cid)
 	binary.BigEndian.PutUint32(buf[offsetSeqNum:], seqNum)
 	binary.BigEndian.PutUint16(buf[offsetFragmentID:], fragmentID)
 	binary.BigEndian.PutUint16(buf[offsetDataShards:], dataShards)
@@ -76,12 +76,12 @@ func BuildDataFragment(sessionID, seqNum uint32, fragmentID, dataShards, parityS
 }
 
 // BuildAckFragment constructs a binary packet for acknowledgment.
-func BuildAckFragment(sessionID, seqNum uint32, fragmentID, dataShards, parityShards uint16) []byte {
+func BuildAckFragment(cid, seqNum uint32, fragmentID, dataShards, parityShards uint16) []byte {
 	flags := FlagACK
 	buf := make([]byte, HeaderSize)
 
 	buf[offsetFlags] = flags
-	binary.BigEndian.PutUint32(buf[offsetSessionID:], sessionID)
+	binary.BigEndian.PutUint32(buf[offsetCID:], cid)
 	binary.BigEndian.PutUint32(buf[offsetSeqNum:], seqNum)
 	binary.BigEndian.PutUint16(buf[offsetFragmentID:], fragmentID)
 	binary.BigEndian.PutUint16(buf[offsetDataShards:], dataShards)
@@ -101,7 +101,7 @@ func ParseFragment(raw []byte) (*Fragment, error) {
 
 	return &Fragment{
 		flags:        raw[offsetFlags],
-		sessionID:    binary.BigEndian.Uint32(raw[offsetSessionID:]),
+		cid:          binary.BigEndian.Uint32(raw[offsetCID:]),
 		seqNum:       binary.BigEndian.Uint32(raw[offsetSeqNum:]),
 		fragmentID:   binary.BigEndian.Uint16(raw[offsetFragmentID:]),
 		dataShards:   binary.BigEndian.Uint16(raw[offsetDataShards:]),
@@ -118,7 +118,7 @@ func (f *Fragment) ValidateChecksum() bool {
 	// to avoid rebuilding it, but this is safe and clean.
 	header := make([]byte, offsetChecksum)
 	header[offsetFlags] = f.flags
-	binary.BigEndian.PutUint32(header[offsetSessionID:], f.sessionID)
+	binary.BigEndian.PutUint32(header[offsetCID:], f.cid)
 	binary.BigEndian.PutUint32(header[offsetSeqNum:], f.seqNum)
 	binary.BigEndian.PutUint16(header[offsetFragmentID:], f.fragmentID)
 	binary.BigEndian.PutUint16(header[offsetDataShards:], f.dataShards)

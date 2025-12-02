@@ -26,18 +26,18 @@ all: clean groundcontrol mothership rover
 
 # The main entry point for Ground Control
 groundcontrol: ui-groundcontrol
-	@echo "🚀 Building Ground Control Binary..."
+	@echo "Building Ground Control Binary..."
 	@mkdir -p $(GC_BIN)
 	# Copy the built UI assets to the binary's folder
 	@mkdir -p $(GC_BIN)/dist
 	@cp -r $(GC_UI_SRC)/dist/* $(GC_BIN)/dist/
 	# Build the Go binary
 	go build -o $(GC_BIN)/groundcontrol $(GC_CMD)
-	@echo "✅ Ground Control built successfully!"
+	@echo "Ground Control built successfully!"
 
 # The React Frontend
 ui-groundcontrol:
-	@echo "🎨 Building Ground Control UI..."
+	@echo "Building Ground Control UI..."
 	# Install dependencies only if node_modules is missing (saves time)
 	@[ -d "$(GC_UI_SRC)/node_modules" ] || (cd $(GC_UI_SRC) && npm install)
 	# Run the Vite build
@@ -48,29 +48,29 @@ ui-groundcontrol:
 # ==============================================================================
 
 mothership:
-	@echo "🛸 Building Mothership..."
+	@echo "Building Mothership..."
 	@mkdir -p $(MS_BIN)
 	# Build the Go binary
 	go build -o $(MS_BIN)/mothership $(MS_CMD)
-	@echo "✅ Mothership built successfully!"
+	@echo "Mothership built successfully!"
 
 # ==============================================================================
 # 3. ROVER
 # ==============================================================================
 
 rover:
-	@echo "🤖 Building Rover..."
+	@echo "Building Rover..."
 	@mkdir -p $(ROVER_BIN)
 	# Build the Go binary
 	go build -o $(ROVER_BIN)/rover $(ROVER_CMD)
-	@echo "✅ Rover built successfully!"
+	@echo "Rover built successfully!"
 
 # ==============================================================================
 # UTILITIES
 # ==============================================================================
 
 clean:
-	@echo "🧹 Cleaning up build artifacts..."
+	@echo "Cleaning up build artifacts..."
 	rm -rf $(BIN_DIR)
 	# Optional: Clean UI build artifacts if you want a fresh start
 	# rm -rf $(GC_UI_SRC)/dist

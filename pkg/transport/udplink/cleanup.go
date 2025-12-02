@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// cleanupLoop periodically cleans up old, incomplete received packets to prevent memory leaks.
+// cleanupLoop periodically runs garbage collection for stale reception state.
+// This prevents memory leaks caused by incomplete packet transmissions (e.g., dropped fragments).
 func (p *Peer[T]) cleanupLoop() {
 	defer p.wg.Done()
 
@@ -17,7 +18,7 @@ func (p *Peer[T]) cleanupLoop() {
 	for {
 		select {
 		case <-p.stopChan:
-			p.lf.Write("[EVENT] Cleanup loop stopped")
+			p.lf.Write("[EVENT] cleanup loop stopped")
 			return
 		case <-ticker.C:
 			p.performCleanup()
@@ -25,39 +26,41 @@ func (p *Peer[T]) cleanupLoop() {
 	}
 }
 
-// performCleanup removes stale entries from the received packets map.
+// performCleanup iterates through active reception buffers and removes entries
+// that have exceeded their Time-To-Live (TTL).
 func (p *Peer[T]) performCleanup() {
 	now := time.Now()
 
 	p.recvPackets.Range(
 		func(key packetKey, pktVar *safe.Var[receivedPacket]) bool {
-
-			// If the peer is stopping, abort the entire loop immediately.
+			// Abort immediately if the peer is stopping
 			select {
 			case <-p.stopChan:
-				return false // Stop iterating the map
+				return false
 			default:
 			}
 
-			var delete bool
-			var reconstructed bool
-
-			// Check if the packet is stale and if has been reconstructed
-			pktVar.View(
-				func(pkt *receivedPacket) {
-					if now.Sub(pkt.lastUpdated) > p.config.Timeouts.RecvTTL {
-						delete = true
-						reconstructed = pkt.reconstructed
-					}
-				},
+			var (
+				shouldDelete     bool
+				wasReconstructed bool
 			)
 
-			// If the packet is stale, delete it
-			if delete {
-				if reconstructed {
-					p.lf.Write("[CLEANUP] Removing reconstructed packet seq %d from %s", key.seqNum, key.addr)
+			// Inspect state (Read Lock)
+			pktVar.View(func(pkt *receivedPacket) {
+				if now.Sub(pkt.lastUpdated) > p.config.Timeouts.RecvTTL {
+					shouldDelete = true
+					wasReconstructed = pkt.reconstructed
+				}
+			})
+
+			// Perform deletion if needed
+			if shouldDelete {
+				if wasReconstructed {
+					// Normal cleanup: The packet was finished and delivered, just removing state.
+					p.lf.Write("[CLEANUP] Removing finished packet seq %d from %s", key.seqNum, key.addr)
 				} else {
-					p.lf.Write("[CLEANUP] Removing stale packet seq %d from %s", key.seqNum, key.addr)
+					// Timeout: The packet never completed reassembly (packet loss).
+					p.lf.Write("[TIMEOUT] Dropping incomplete packet seq %d from %s", key.seqNum, key.addr)
 				}
 				p.recvPackets.Delete(key)
 			}
@@ -65,5 +68,4 @@ func (p *Peer[T]) performCleanup() {
 			return true
 		},
 	)
-
 }

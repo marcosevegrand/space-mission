@@ -1,11 +1,12 @@
 package udplink
 
 import (
-	"math"
 	"space-mission/pkg/utils/safe"
 	"time"
 )
 
+// retransmissionLoop periodically checks for unacknowledged packets and retransmits them.
+// It applies exponential backoff to avoid network congestion.
 func (p *Peer[T]) retransmissionLoop() {
 	defer p.wg.Done()
 
@@ -13,6 +14,7 @@ func (p *Peer[T]) retransmissionLoop() {
 	defer ticker.Stop()
 
 	p.lf.Write("[EVENT] retransmission loop started")
+
 	for {
 		select {
 		case <-p.stopChan:
@@ -24,89 +26,100 @@ func (p *Peer[T]) retransmissionLoop() {
 	}
 }
 
+// checkRetransmissions scans the sent packets map and handles retries or timeouts.
 func (p *Peer[T]) checkRetransmissions() {
 	p.sentPackets.Range(
 		func(key packetKey, pktVar *safe.Var[sentPacket]) bool {
-			// If the peer is stopping, abort immediately
+			// Abort if peer is shutting down
 			select {
 			case <-p.stopChan:
 				return false
 			default:
 			}
 
+			// Local flags to determine action after releasing the read lock
 			var (
-				acked   bool
-				ready   bool
-				retries int
-				timeout bool
+				isAcked   bool
+				isTimeout bool
+				isReady   bool
+				retries   int
 			)
 
-			// Do a combined check on the packet's state
+			// 1. Inspect State (Read Lock)
 			pktVar.View(func(pkt *sentPacket) {
-				// Check if the packet is already acknowledged
 				if pkt.acked {
-					acked = true
+					isAcked = true
 					return
 				}
-				// Check if packet reached maximum retries limit
-				if p.config.Retransmission.MaxRetries != 0 && pkt.retryCount >= p.config.Retransmission.MaxRetries {
-					timeout = true
+
+				// Check for max retries timeout
+				if p.config.Retransmission.MaxRetries > 0 && pkt.retryCount >= p.config.Retransmission.MaxRetries {
+					isTimeout = true
 					retries = pkt.retryCount
 					return
 				}
-				// Check if the packet is ready for retransmission
+
+				// Check if backoff timer has expired
 				if !pkt.lastTransmission.IsZero() && time.Since(pkt.lastTransmission) > pkt.currentBackoff {
-					ready = true
+					isReady = true
 				}
 			})
 
-			// If the packet is acknowledged, remove it from the map
-			if acked {
-				p.lf.Write("[CLEANUP] removing acknowledged seqNum %d by %s", key.seqNum, key.addr)
+			// 2. Handle Outcomes
+
+			// Case A: Packet was acknowledged (cleanup)
+			if isAcked {
+				// We log this as cleanup because the main "ACKED" log happens in processing.go
+				// This is just a safeguard garbage collection.
 				p.sentPackets.Delete(key)
-				return true // move to the next packet
+				return true
 			}
 
-			// If the packet has timed out, remove it from the map
-			if timeout {
-				p.lf.Write("[TIMEOUT] packet %d timed out after %d retries", key.seqNum, retries)
+			// Case B: Max retries exceeded (timeout)
+			if isTimeout {
+				p.lf.Write("[TIMEOUT] packet seq %d to %s dropped after %d retries", key.seqNum, key.addr, retries)
 				p.sentPackets.Delete(key)
-				return true // move to the next packet
+				return true
 			}
 
-			// If the packet is not ready for retransmission, move to the next packet
-			if !ready {
-				return true // continue iterating the map
+			// Case C: Not ready yet (wait)
+			if !isReady {
+				return true
 			}
-			p.lf.Write("[RT-X] packet %d requires retransmission", key.seqNum)
 
-			// Identify the unacked fragments and retransmit them
-			pktVar.View(
-				func(pkt *sentPacket) {
-					for i, acked := range pkt.fragsAck {
-						if !acked {
-							if err := p.sendFragment(pkt.fragments[i], pkt.dest); err != nil {
-								p.lf.Write("[WARN] failed to retransmit fragment %d (seqNum %d) to %s: %v",
-									i+1, key.seqNum, key.addr, err)
-							}
+			// Case D: Retransmit needed
+			p.lf.Write("[RT-X] retransmitting seq %d to %s (attempt %d)", key.seqNum, key.addr, retries+1)
+
+			// 3. Perform Retransmission (Read Lock for fragments)
+			// We only retransmit unacknowledged fragments to save bandwidth.
+			pktVar.View(func(pkt *sentPacket) {
+				for i, acked := range pkt.fragsAck {
+					if !acked {
+						// Attempt send, log warning on failure but don't abort loop
+						if err := p.sendFragment(pkt.fragments[i], pkt.dest); err != nil {
+							p.lf.Write("[WARN] retransmit failed for seq %d frag %d: %v", key.seqNum, i, err)
 						}
 					}
-				},
-			)
+				}
+			})
 
-			// Update the shared state for next retransmission
-			pktVar.Edit(
-				func(pkt *sentPacket) {
-					pkt.retryCount++
-					pkt.lastTransmission = time.Now()
+			// 4. Update Backoff State (Write Lock)
+			pktVar.Edit(func(pkt *sentPacket) {
+				pkt.retryCount++
+				pkt.lastTransmission = time.Now()
 
-					// Apply exponential backoff to the shared timer.
-					newBackoff := time.Duration(float64(pkt.currentBackoff) *
-						math.Pow(p.config.Retransmission.BackoffMultiplier, float64(pkt.retryCount)))
+				// Exponential backoff: new = current * multiplier
+				// We cast to float for math, then back to duration
+				nextBackoff := float64(pkt.currentBackoff) * p.config.Retransmission.BackoffMultiplier
 
-					pkt.currentBackoff = min(newBackoff, p.config.Retransmission.MaxBackoff)
-				},
-			)
+				// Cap the backoff at MaxBackoff
+				maxBackoff := float64(p.config.Retransmission.MaxBackoff)
+				if nextBackoff > maxBackoff {
+					nextBackoff = maxBackoff
+				}
+
+				pkt.currentBackoff = time.Duration(nextBackoff)
+			})
 
 			return true
 		},

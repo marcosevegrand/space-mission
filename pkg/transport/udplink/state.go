@@ -40,22 +40,23 @@ type receivedPacket struct {
 	reconstructed bool
 }
 
-// receivedPacketKey is a composite key used to uniquely identify a message
-// from a specific sender in the recvPkts map.
+// packetKey is a composite key used to uniquely identify a message
+// in both sentPackets (outgoing) and recvPackets (incoming) maps.
 type packetKey struct {
-	addr      string // address from remote peer
-	sessionID uint32 // unused by sentPackets
-	seqNum    uint32
+	addr   string // Normalized address (IP:Port)
+	cid    uint32 // Connection ID (session identifier)
+	seqNum uint32 // Sequence Number
 }
 
-// pendingPayload wraps a fully reassembled payload with its session ID and sequence number
+// pendingPayload wraps a fully reassembled payload with its CID and sequence number
 // to facilitate in-order delivery to the handler.
 type pendingPayload struct {
-	sessionID uint32
-	seqNum    uint32
-	bytes     []byte
+	cid    uint32
+	seqNum uint32
+	bytes  []byte
 }
 
+// CmpSeqNum is a comparator for sorting pendingPayloads in the delivery queue.
 func CmpSeqNum(a, b pendingPayload) int {
 	if a.seqNum < b.seqNum {
 		return -1

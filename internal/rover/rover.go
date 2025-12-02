@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"space-mission/pkg/codecs"
+	"space-mission/pkg/logfile"
 	"space-mission/pkg/models"
 	"space-mission/pkg/transport/tcpstream"
 	"space-mission/pkg/transport/udplink"
@@ -19,6 +20,7 @@ type Rover struct {
 	telemetryStream *tcpstream.Client[*models.Telemetry]
 	missionLink     *udplink.Peer[models.MissionMessage]
 
+	lf       *logfile.File
 	running  *safe.Var[bool]
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -61,6 +63,12 @@ func NewRover(
 		return nil, err
 	}
 	r.missionLink = missionLink
+
+	lf, err := logfile.New(fmt.Sprintf("rover_%d.log", roverID))
+	if err != nil {
+		return nil, err
+	}
+	r.lf = lf
 
 	return r, nil
 }
@@ -112,7 +120,7 @@ func (r *Rover) missionRequestLoop(frequency time.Duration, addr string) error {
 			}
 			err := r.missionLink.Send(&request, addr)
 			if err != nil {
-				log.Printf("failed to send mission request: %v", err)
+				r.lf.Write("failed to send mission request: %v", err)
 			}
 		}
 	}
@@ -125,7 +133,7 @@ func (r *Rover) sendMissionUpdates(frequency time.Duration, addr string) error {
 		defer r.wg.Done()
 		err := r.missionUpdateLoop(frequency, addr)
 		if err != nil {
-			log.Printf("mission update loop error: %v", err)
+			r.lf.Write("mission update loop error: %v", err)
 		}
 	}()
 
@@ -151,7 +159,7 @@ func (r *Rover) missionUpdateLoop(frequency time.Duration, addr string) error {
 			for node := range updates.Nodes() {
 				err := r.missionLink.Send(&node.Value, addr)
 				if err != nil {
-					log.Printf("failed to send mission update: %v", err)
+					r.lf.Write("failed to send mission update: %v", err)
 				}
 			}
 		}
@@ -172,7 +180,7 @@ func (r *Rover) Start(
 	if err != nil {
 		return err
 	}
-	fmt.Println("[START] COMPUTE ELEMENT")
+	r.lf.Write("[START] COMPUTE ELEMENT")
 
 	err = r.telemetryStream.Connect()
 	if err != nil {
@@ -182,13 +190,13 @@ func (r *Rover) Start(
 	if err != nil {
 		return err
 	}
-	fmt.Println("[START] TELEMETRY STREAM")
+	r.lf.Write("[START] TELEMETRY STREAM")
 
 	err = r.missionLink.Start()
 	if err != nil {
 		return err
 	}
-	fmt.Println("[START] MISSION LINK")
+	r.lf.Write("[START] MISSION LINK")
 
 	err = r.sendMissionRequests(missionRequestFrequency, mothershipMLAddr)
 	if err != nil {
@@ -207,16 +215,16 @@ func (r *Rover) Stop() error {
 	close(r.stopChan)
 
 	r.missionLink.Stop()
-	fmt.Println("[STOP] MISSION LINK")
+	r.lf.Write("[STOP] MISSION LINK")
 
 	r.telemetryStream.Stop()
-	fmt.Println("[STOP] TELEMETRY STREAM")
+	r.lf.Write("[STOP] TELEMETRY STREAM")
 
 	r.computeElement.Stop()
-	fmt.Println("[STOP] COMPUTE ELEMENT")
+	r.lf.Write("[STOP] COMPUTE ELEMENT")
 
 	r.wg.Wait()
-	fmt.Println("[STOP] ROVER")
+	r.lf.Write("[STOP] ROVER")
 
 	return nil
 }
