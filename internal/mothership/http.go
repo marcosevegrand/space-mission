@@ -24,7 +24,7 @@ type APIServer struct {
 func NewAPIServer(m *Mothership, addr string) (*APIServer, error) {
 	api := &APIServer{
 		mothership: m,
-		running:    safe.NewVar[bool](false),
+		running:    safe.NewVar(false),
 	}
 
 	mux := http.NewServeMux()
@@ -101,7 +101,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 func writeJSONError(w http.ResponseWriter, message string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": false,
 		"error":   message,
 	})
@@ -116,7 +116,7 @@ func (s *APIServer) handleGetRovers(w http.ResponseWriter, r *http.Request) {
 	rovers := s.mothership.GetAllRovers()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"data":    rovers,
 	})
@@ -130,7 +130,7 @@ func (s *APIServer) handleMissions(w http.ResponseWriter, r *http.Request) {
 
 	missions := s.mothership.GetAllMissions()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"data":    missions,
 	})
@@ -154,7 +154,7 @@ func (s *APIServer) handlePostMission(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Success Response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": "Mission created successfully",
 	})
