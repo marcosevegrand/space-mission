@@ -139,20 +139,20 @@ func (s *APIServer) handleMissions(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) handlePostMission(w http.ResponseWriter, r *http.Request) {
 	var req CreateMissionRequest
 
-	// 1. Parse JSON
+	// Parse JSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// 2. Validate & Convert (Using the helper in api.go)
+	// Validate & Convert (Using the helper in api.go)
 	err := s.mothership.CreateMission(&req)
 	if err != nil {
 		writeJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// 4. Success Response
+	// Success Response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,

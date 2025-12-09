@@ -40,7 +40,6 @@ No missionLink já temos:
     Error Detection
     Forward Error Correction
     Thread Work Pool
-Também precisamos de implementar:
     In-Order Delivery
 
 -----------------

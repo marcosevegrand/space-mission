@@ -72,7 +72,6 @@ rover:
 clean:
 	@echo "Cleaning up build artifacts..."
 	rm -rf $(BIN_DIR)
-	# Optional: Clean UI build artifacts if you want a fresh start
 	# rm -rf $(GC_UI_SRC)/dist
 	# rm -rf $(GC_UI_SRC)/node_modules
 
