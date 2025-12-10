@@ -41,5 +41,19 @@ $BIN -id=3 \
     -r-ml-addr="$MOTHERSHIP_IP:9013" &
 echo "   -> Rover 3 started (UDP: 9013)"
 
+# Rover 4 (ID: 4, Port: 9014)
+$BIN -id=4 \
+    -m-ts-addr="$MOTHERSHIP_IP:9001" \
+    -m-ml-addr="$MOTHERSHIP_IP:9002" \
+    -r-ml-addr="$MOTHERSHIP_IP:9014" &
+echo "   -> Rover 4 started (UDP: 9014)"
+
+# Rover 5 (ID: 5, Port: 9015)
+$BIN -id=5 \
+    -m-ts-addr="$MOTHERSHIP_IP:9001" \
+    -m-ml-addr="$MOTHERSHIP_IP:9002" \
+    -r-ml-addr="$MOTHERSHIP_IP:9015" &
+echo "   -> Rover 5 started (UDP: 9015)"
+
 echo "✅ All systems go. Press Ctrl+C to stop the fleet."
 wait

@@ -2,3 +2,7 @@ add 1 sample circle 10m 3s 10 10 2
 add 2 monitor rect 40s 3s -20 -20 0 -40
 add 3 terrain rect 10m 3s 100 100 150 80
 add 4 image rect 10m 3s -30 30 -20 20
+add 5 sample circle 12m 3s 40 -40 5
+add 6 monitor rect 30m 3s 50 20 70 10
+add 7 terrain circle 15m 3s -60 10 8
+add 8 image rect 20m 3s -50 -50 -30 -60

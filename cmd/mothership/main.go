@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	staleMission = 5
-	staleRover   = 5 * time.Second
+	staleMission = 8
+	staleRover   = 30 * time.Second
 )
 
 var (

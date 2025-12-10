@@ -17,7 +17,7 @@ func (m *Mothership) missionHandler(msg models.MissionMessage, senderAddr string
 	case *models.MissionRequest:
 
 		assignment, err := m.assignMission(msg.RoverID, msg.Position)
-		if err != nil {
+		if err != nil || assignment.MissionID == 0 {
 			return err
 		}
 

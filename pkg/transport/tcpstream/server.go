@@ -22,8 +22,9 @@ type ServerTimeoutConfig struct {
 }
 
 var DefaultServerTimeout = ServerTimeoutConfig{
-	Listen: 5 * time.Second,
-	Read:   3 * time.Second,
+	Listen: 10 * time.Second,
+	// Leitura tolerante a "silêncios" causados por jitter alto ou perda momentânea
+	Read: 10 * time.Second,
 }
 
 // ============================================================================
