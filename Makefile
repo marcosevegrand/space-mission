@@ -38,7 +38,7 @@ groundcontrol: ui-groundcontrol
 # The React Frontend
 ui-groundcontrol:
 	@echo "Building Ground Control UI..."
-	# Install dependencies only if node_modules is missing (saves time)
+	# Install dependencies only if node_modules is missing
 	@[ -d "$(GC_UI_SRC)/node_modules" ] || (cd $(GC_UI_SRC) && npm install)
 	# Run the Vite build
 	cd $(GC_UI_SRC) && npm run build

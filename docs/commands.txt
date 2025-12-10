@@ -1,9 +1,0 @@
-cd /media/sf_space-mission/cmd/groundcontrol
-./groundcontrol -api-addr="10.0.0.21:7000"
-
-cd /media/sf_space-mission/cmd/mothership/
-./mothership
-
-cd /media/sf_space-mission/cmd/rover
-./rover -id=1 -r-ml-addr="10.0.9.20:9000"
-

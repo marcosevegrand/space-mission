@@ -13,21 +13,6 @@ import (
 )
 
 // ============================================================================
-// Server Configuration
-// ============================================================================
-
-type ServerTimeoutConfig struct {
-	Listen time.Duration // Timeout for accepting new connections; defaults to 3s if not set
-	Read   time.Duration // Timeout for reading from each client connection; defaults to 3s if not set
-}
-
-var DefaultServerTimeout = ServerTimeoutConfig{
-	Listen: 10 * time.Second,
-	// Leitura tolerante a "silêncios" causados por jitter alto ou perda momentânea
-	Read: 10 * time.Second,
-}
-
-// ============================================================================
 // Server Type Definition
 // ============================================================================
 

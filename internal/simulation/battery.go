@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+const (
+	chargingRate             = 15.0 // Charging rate in percentage per hour
+	idleConsumptionRate      = 10.0 // Consumption rate in percentage per hour when idle
+	onMissionConsumptionRate = 50.0 // Consumption rate in percentage per hour when on mission
+)
+
 type PowerModule struct {
 	health            models.HealthStatus
 	batteryPercentage float64 // Battery charge percentage (0-100%)
@@ -47,12 +53,12 @@ func (p *PowerModule) GetBatteryPercentage(deltaT time.Duration, opState models.
 	hours := deltaT.Hours()
 
 	// Charging rate +20% per hour
-	p.batteryPercentage += 20.0 * hours
+	p.batteryPercentage += chargingRate * hours
 
 	// Consumption rate: 10% per hour idle, 30% per hour on mission
-	consumptionRate := 10.0
+	consumptionRate := idleConsumptionRate
 	if opState == models.StateOnMission {
-		consumptionRate = 30.0
+		consumptionRate = onMissionConsumptionRate
 	}
 	p.batteryPercentage -= consumptionRate * hours
 

@@ -278,11 +278,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="50000"
+                delay="0"
                 bandwidth="0"
-                loss="0.10000000149011612"
+                loss="0.0"
                 dup="0"
-                jitter="5000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -307,11 +307,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -336,11 +336,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -365,11 +365,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -394,11 +394,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="800000"
+                delay="0"
                 bandwidth="0"
-                loss="2.0"
+                loss="0.0"
                 dup="0"
-                jitter="50000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -423,11 +423,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -452,11 +452,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -481,11 +481,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="20000"
+                delay="0"
                 bandwidth="0"
                 loss="0.0"
                 dup="0"
-                jitter="1000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -510,11 +510,11 @@
                 ip6_mask="64"
             />
       <options
-                delay="50000"
+                delay="0"
                 bandwidth="0"
-                loss="0.10000000149011612"
+                loss="0.0"
                 dup="0"
-                jitter="5000"
+                jitter="0"
                 unidirectional="0"
                 buffer="0"
             />
@@ -557,17 +557,17 @@
     <mobility_configuration node="7" model="basic_range">
       <configuration name="range" value="500" />
       <configuration name="bandwidth" value="54000000" />
-      <configuration name="jitter" value="5000" />
-      <configuration name="delay" value="10000" />
-      <configuration name="error" value="5.0" />
+      <configuration name="jitter" value="0" />
+      <configuration name="delay" value="0" />
+      <configuration name="error" value="0" />
       <configuration name="promiscuous" value="0" />
     </mobility_configuration>
     <mobility_configuration node="8" model="basic_range">
       <configuration name="range" value="500" />
       <configuration name="bandwidth" value="54000000" />
-      <configuration name="jitter" value="5000" />
-      <configuration name="delay" value="10000" />
-      <configuration name="error" value="5.0" />
+      <configuration name="jitter" value="0" />
+      <configuration name="delay" value="0" />
+      <configuration name="error" value="0" />
       <configuration name="promiscuous" value="0" />
     </mobility_configuration>
   </mobility_configurations>
