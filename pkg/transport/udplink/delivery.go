@@ -59,7 +59,7 @@ func (p *Peer[T]) performDelivery() {
 // processQueue handles the ordering logic for a specific sender.
 // It checks for gaps, duplicate packets, and connection resets (CID changes).
 func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayload]) {
-	// 1. Get Expected Sequence Number (Thread-Safe)
+	// 1. Get Expected Sequence Number
 	expected, ok := p.incomingSeqNums.Load(senderAddr)
 	if !ok {
 		expected = 0
@@ -146,7 +146,7 @@ func (p *Peer[T]) processQueue(senderAddr string, queue *safe.List[pendingPayloa
 		// We are missing one or more intermediate packets.
 		// Start the gap timer if it isn't already running.
 		if _, isWaiting := p.gapSince.Load(senderAddr); !isWaiting {
-			// p.lf.Write("[GAP] Detected gap for %s. Have %d, Expected %d. Starting timer.", senderAddr, headPayload.seqNum, expected)
+			p.lf.Write("[INFO] Detected gap for %s. Have %d, Expected %d. Starting timer.", senderAddr, headPayload.seqNum, expected)
 			p.gapSince.Store(senderAddr, time.Now())
 			return // Stop processing until gap fills or timeouts
 		}
@@ -174,7 +174,7 @@ func (p *Peer[T]) processPayload(senderAddr string, queue *safe.List[pendingPayl
 	}
 
 	// Log success and hand off to application
-	p.lf.Write("[RX-DELIVER] from %s\n%v", senderAddr, data)
+	p.lf.Write("[PROCESSING] from %s\n%v", senderAddr, data)
 	if err := p.handler(data, senderAddr); err != nil {
 		p.lf.Write("[ERROR] Handler returned error for %s: %v", senderAddr, err)
 	}

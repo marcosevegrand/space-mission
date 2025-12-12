@@ -106,7 +106,7 @@ func (m *Mothership) loadMissionsFromFile(filename string) {
 
 		args := strings.Fields(line)
 
-		// Optional: Be lenient if the user put "add" at the start of the line in the file
+		// Be lenient if the user put "add" at the start of the line in the file
 		if strings.ToLower(args[0]) == "add" {
 			args = args[1:]
 		}

@@ -97,13 +97,13 @@ func (p *Peer[T]) handleAck(f *Fragment, remote *net.UDPAddr) error {
 // handleData processes an incoming data fragment.
 // It handles reassembly, FEC reconstruction, and queuing for delivery.
 func (p *Peer[T]) handleData(f *Fragment, remote *net.UDPAddr) error {
-	// 1. Send ACK immediately.
+	// Send ACK immediately.
 	// We echo the sender's CID back so they know which session this ACK belongs to.
 	if err := p.sendAck(f.cid, f.seqNum, f.fragmentID, f.dataShards, f.parityShards, remote); err != nil {
 		p.lf.Write("[WARN] Failed to send ACK for fragment %d (seqNum %d) from %s: %v", f.seqNum, f.fragmentID, remote, err)
 	}
 
-	// 2. Prepare state for reassembly.
+	// Prepare state for reassembly.
 	recvKey := packetKey{
 		addr:   normalizeAddr(remote),
 		cid:    f.cid,
@@ -200,7 +200,7 @@ func (p *Peer[T]) handleData(f *Fragment, remote *net.UDPAddr) error {
 		return err
 	}
 
-	// 3. Queue for Delivery (Thread-Safe)
+	// Queue for Delivery
 	if reconstructed {
 		p.lf.Write("[RECONSTRUCTED] seqNum %d from %s", f.seqNum, remote)
 

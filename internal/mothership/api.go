@@ -12,14 +12,14 @@ import (
 // ============================================================================
 
 type RoverResponse struct {
-	models.Telemetry           // <--- Value, not Pointer (Snapshot safety)
-	LastUpdated      time.Time `json:"last_updated"`
-	HasMission       bool      `json:"has_mission"`
+	models.Telemetry
+	LastUpdated time.Time `json:"last_updated"`
+	HasMission  bool      `json:"has_mission"`
 }
 
 type MissionResponse struct {
-	models.MissionAssignment           // <--- Value, not Pointer
-	LastUpdated              time.Time `json:"last_updated"`
+	models.MissionAssignment
+	LastUpdated time.Time `json:"last_updated"`
 }
 
 // CreateMissionRequest is a flat structure to handle JSON input from the UI.
@@ -46,7 +46,7 @@ func (m *Mothership) GetAllRovers() []RoverResponse {
 	var rovers []RoverResponse
 
 	m.roverTelemetry.Range(func(key uint16, val *safe.Var[models.Telemetry]) bool {
-		telemetry := val.Get() // This creates a copy
+		telemetry := val.Get()
 
 		lastUpdate, ok := m.roverLastUpdate.Load(key)
 		if !ok {
@@ -59,7 +59,7 @@ func (m *Mothership) GetAllRovers() []RoverResponse {
 		}
 
 		rovers = append(rovers, RoverResponse{
-			Telemetry:   telemetry, // Safe copy
+			Telemetry:   telemetry,
 			LastUpdated: lastUpdate,
 			HasMission:  hasMission,
 		})
@@ -72,7 +72,7 @@ func (m *Mothership) GetAllMissions() []MissionResponse {
 	var missions []MissionResponse
 
 	m.missionAssignments.Range(func(key uint16, val *safe.Var[models.MissionAssignment]) bool {
-		mission := val.Get() // This creates a copy
+		mission := val.Get()
 
 		lastUpdate, ok := m.missionLastUpdate.Load(key)
 		if !ok {
@@ -80,7 +80,7 @@ func (m *Mothership) GetAllMissions() []MissionResponse {
 		}
 
 		missions = append(missions, MissionResponse{
-			MissionAssignment: mission, // Safe copy
+			MissionAssignment: mission,
 			LastUpdated:       lastUpdate,
 		})
 		return true
