@@ -2,9 +2,10 @@ package mothership
 
 import (
 	"fmt"
-	"space-mission/pkg/models"
-	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 // ============================================================================

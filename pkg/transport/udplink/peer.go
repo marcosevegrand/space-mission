@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"space-mission/pkg/interfaces"
-	"space-mission/pkg/logfile"
-	"space-mission/pkg/utils/pool"
-	"space-mission/pkg/utils/safe"
+	"github.com/marcosevegrand/CC2526/pkg/interfaces"
+	"github.com/marcosevegrand/CC2526/pkg/logfile"
+	"github.com/marcosevegrand/CC2526/pkg/utils/pool"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 
 	"github.com/puzpuzpuz/xsync/v4"
 )

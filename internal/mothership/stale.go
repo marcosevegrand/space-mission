@@ -2,8 +2,9 @@ package mothership
 
 import (
 	"fmt"
-	"space-mission/pkg/models"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
 )
 
 func (m *Mothership) startStaleCheck() error {

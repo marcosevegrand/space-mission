@@ -1,9 +1,10 @@
 package udplink
 
 import (
-	"space-mission/pkg/utils/safe"
 	"sync"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 // deliveryLoop continuously checks for fully reassembled packets and attempts to deliver them

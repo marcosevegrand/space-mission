@@ -3,11 +3,12 @@ package rover
 import (
 	"fmt"
 	"log"
-	"space-mission/internal/simulation"
-	"space-mission/pkg/models"
-	"space-mission/pkg/utils/safe"
 	"sync"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/internal/simulation"
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 const (

@@ -1,4 +1,4 @@
-module space-mission
+module github.com/marcosevegrand/CC2526
 
 go 1.24
 

@@ -3,9 +3,10 @@ package rover
 import (
 	"fmt"
 	"math/rand/v2"
-	"space-mission/pkg/models"
-	"space-mission/pkg/utils/geo"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/utils/geo"
 )
 
 func (c *ComputeElement) executeMission() (end bool) {

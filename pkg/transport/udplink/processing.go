@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"space-mission/pkg/utils/safe"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 
 	"github.com/klauspost/reedsolomon"
 )

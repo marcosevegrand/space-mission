@@ -2,8 +2,9 @@ package geo
 
 import (
 	"math"
-	"space-mission/pkg/models"
-	"space-mission/pkg/utils/safe"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 func Clamp(value, min, max float64) float64 {

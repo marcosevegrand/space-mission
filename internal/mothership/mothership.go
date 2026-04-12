@@ -2,14 +2,15 @@ package mothership
 
 import (
 	"fmt"
-	"space-mission/pkg/codecs"
-	"space-mission/pkg/logfile"
-	"space-mission/pkg/models"
-	"space-mission/pkg/transport/tcpstream"
-	"space-mission/pkg/transport/udplink"
-	"space-mission/pkg/utils/safe"
 	"sync"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/codecs"
+	"github.com/marcosevegrand/CC2526/pkg/logfile"
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/transport/tcpstream"
+	"github.com/marcosevegrand/CC2526/pkg/transport/udplink"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 
 	"github.com/puzpuzpuz/xsync/v4"
 )

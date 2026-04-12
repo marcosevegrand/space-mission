@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"space-mission/pkg/interfaces"
-	"space-mission/pkg/logfile"
+	"github.com/marcosevegrand/CC2526/pkg/interfaces"
+	"github.com/marcosevegrand/CC2526/pkg/logfile"
 )
 
 // ============================================================================

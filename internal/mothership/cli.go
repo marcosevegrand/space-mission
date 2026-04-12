@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"space-mission/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/models"
 )
 
 // RunCLI starts the interactive command line interface in a goroutine

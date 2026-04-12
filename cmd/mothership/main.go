@@ -6,9 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"space-mission/internal/mothership"
 	"syscall"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/internal/mothership"
 )
 
 const (

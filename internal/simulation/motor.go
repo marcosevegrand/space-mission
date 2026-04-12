@@ -3,8 +3,9 @@ package simulation
 import (
 	"math"
 	"math/rand/v2"
-	"space-mission/pkg/models"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
 )
 
 // These constants are not realistic values for a rover and are intended for simulation purposes only.

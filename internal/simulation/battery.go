@@ -2,8 +2,9 @@ package simulation
 
 import (
 	"math/rand/v2"
-	"space-mission/pkg/models"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
 )
 
 const (

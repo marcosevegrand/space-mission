@@ -5,8 +5,9 @@ import (
 	"math"
 	"math/rand/v2"
 	"net"
-	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 
 	"github.com/klauspost/reedsolomon"
 )

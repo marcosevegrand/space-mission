@@ -1,8 +1,9 @@
 package udplink
 
 import (
-	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 // cleanupLoop periodically runs garbage collection for stale reception state.

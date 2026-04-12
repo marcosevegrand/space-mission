@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"space-mission/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/models"
 )
 
 // TelemetryCodec handles encoding/decoding of Telemetry messages.

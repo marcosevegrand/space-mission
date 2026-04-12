@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 )
 
 // ============================================================================

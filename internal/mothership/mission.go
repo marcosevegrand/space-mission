@@ -3,10 +3,11 @@ package mothership
 import (
 	"fmt"
 	"math"
-	"space-mission/pkg/models"
-	"space-mission/pkg/utils/geo"
-	"space-mission/pkg/utils/safe"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/pkg/models"
+	"github.com/marcosevegrand/CC2526/pkg/utils/geo"
+	"github.com/marcosevegrand/CC2526/pkg/utils/safe"
 
 	"github.com/puzpuzpuz/xsync/v4"
 )

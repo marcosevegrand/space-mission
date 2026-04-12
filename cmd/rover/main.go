@@ -6,9 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"space-mission/internal/rover"
 	"syscall"
 	"time"
+
+	"github.com/marcosevegrand/CC2526/internal/rover"
 )
 
 const (
